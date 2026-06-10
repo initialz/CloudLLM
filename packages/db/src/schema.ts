@@ -174,7 +174,8 @@ export const usageRecords = pgTable(
     id: id(),
     /** Redis Stream entry ID,worker 幂等去重用(at-least-once 投递) */
     eventId: text("event_id").unique(),
-    keyId: uuid("key_id").notNull().references(() => apiKeys.id),
+    /** 软引用 api_keys.id(无 FK:Key 删除后计费事实仍须可落库,避免因主体删除丢失用量账单) */
+    keyId: uuid("key_id").notNull(),
     modelSlug: text("model_slug").notNull(),
     channelId: uuid("channel_id").references(() => channels.id),
     inputTokens: integer("input_tokens").notNull().default(0),
