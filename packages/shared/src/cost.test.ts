@@ -60,3 +60,30 @@ describe("computeCostCny", () => {
     expect(cost).toBe("0.000000");
   });
 });
+
+describe("microToCny 负数(台账冲正)", () => {
+  it("负数输出带符号的合法 numeric 字符串", () => {
+    expect(microToCny(-1n)).toBe("-0.000001");
+    expect(microToCny(-1_500_000n)).toBe("-1.500000");
+    expect(microToCny(-12_345_678n)).toBe("-12.345678");
+  });
+});
+
+describe("computeCostCny 输入防御", () => {
+  const zero = { inputPerMTok: "0", outputPerMTok: "0", cacheReadPerMTok: "0", cacheWritePerMTok: "0" };
+  it("负 token 数抛错", () => {
+    expect(() =>
+      computeCostCny({ inputTokens: -100, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, zero),
+    ).toThrow(/非负整数/);
+  });
+  it("非整数 token 数抛错", () => {
+    expect(() =>
+      computeCostCny({ inputTokens: 1.5, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, zero),
+    ).toThrow(/非负整数/);
+  });
+  it("零价格模型计费为 0", () => {
+    expect(
+      computeCostCny({ inputTokens: 1234, outputTokens: 5678, cacheReadTokens: 0, cacheWriteTokens: 0 }, zero),
+    ).toBe("0.000000");
+  });
+});
