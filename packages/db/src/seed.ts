@@ -1,0 +1,41 @@
+/**
+ * 幂等种子:初始管理员 + openai/anthropic 两个 provider。
+ * 运行:pnpm --filter @byok/db seed
+ */
+import { hashPassword } from "@byok/shared";
+import { createDb } from "./client.js";
+import { providers, users } from "./schema.js";
+
+const DATABASE_URL =
+  process.env.DATABASE_URL ?? "postgres://byok:byok_dev@localhost:5432/byok";
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "admin@example.com";
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "change-me-now";
+
+async function main() {
+  const db = createDb(DATABASE_URL);
+
+  await db
+    .insert(users)
+    .values({
+      email: ADMIN_EMAIL,
+      passwordHash: await hashPassword(ADMIN_PASSWORD),
+      role: "admin",
+    })
+    .onConflictDoNothing({ target: users.email });
+
+  await db
+    .insert(providers)
+    .values([
+      { type: "openai", displayName: "OpenAI" },
+      { type: "anthropic", displayName: "Anthropic" },
+    ])
+    .onConflictDoNothing({ target: providers.type });
+
+  console.log("seed 完成:admin =", ADMIN_EMAIL);
+  process.exit(0);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
