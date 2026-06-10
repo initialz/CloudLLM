@@ -8,7 +8,7 @@
 
 ```
 调用方 (curl / OpenAI SDK / Claude Code)
-         │  Bearer byok_xxxx
+         │  Bearer sk-wtg-xxxx
          ▼
 ┌─────────────────────────┐
 │  Gateway (Hono, :8080)  │  ← Key 认证 / 预算检查 / 上游路由
@@ -82,7 +82,7 @@ pnpm --filter @byok/db seed
 pnpm --filter @byok/gateway dev
 
 # 终端 2：Worker（消费后台）
-pnpm --filter @byok/worker dev 2>/dev/null || node --watch apps/worker/src/index.ts
+pnpm --filter @byok/worker build && node apps/worker/dist/index.js
 
 # 终端 3：Console（:3000）
 pnpm --filter @byok/console dev
@@ -181,7 +181,7 @@ docker compose -f docker-compose.prod.yml down
 
 ## 调用方接入示例
 
-Console 登录后，在 **Key 管理** 页签发 `byok_xxxx` 格式的 Key。
+Console 登录后，在 **Key 管理** 页签发 `sk-wtg-xxxx` 格式的 Key。
 
 ### OpenAI SDK（Python）
 
@@ -189,7 +189,7 @@ Console 登录后，在 **Key 管理** 页签发 `byok_xxxx` 格式的 Key。
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="byok_your_key_here",
+    api_key="sk-wtg-your-key-here",
     base_url="http://your-host:8080/v1",  # gateway 地址
 )
 
@@ -206,7 +206,7 @@ print(response.choices[0].message.content)
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: "byok_your_key_here",
+  apiKey: "sk-wtg-your-key-here",
   baseURL: "http://your-host:8080/v1",
 });
 
@@ -221,7 +221,7 @@ const res = await client.chat.completions.create({
 ```bash
 # 设置环境变量，Claude Code 将请求转发至 BYOK Gateway
 export ANTHROPIC_BASE_URL=http://your-host:8080
-export ANTHROPIC_API_KEY=byok_your_key_here
+export ANTHROPIC_API_KEY=sk-wtg-your-key-here
 claude "帮我写一个 hello world"
 ```
 
@@ -229,7 +229,7 @@ claude "帮我写一个 hello world"
 
 ```bash
 curl http://your-host:8080/v1/chat/completions \
-  -H "Authorization: Bearer byok_your_key_here" \
+  -H "Authorization: Bearer sk-wtg-your-key-here" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",
@@ -241,7 +241,7 @@ curl http://your-host:8080/v1/chat/completions \
 
 ```bash
 curl http://your-host:8080/v1/messages \
-  -H "Authorization: Bearer byok_your_key_here" \
+  -H "Authorization: Bearer sk-wtg-your-key-here" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -284,6 +284,7 @@ docker compose -f deploy/docker-compose.prod.yml exec redis \
 ```
 
 > 正常情况 XLEN 应接近 0；DLQ 有条目需告警并人工检查原因。
+> 该流以 MAXLEN ~500000 近似裁剪，长度逼近 50 万说明 worker 滞后、已开始丢计费事件，必须立即处理。
 > 注：时区全部使用 UTC，界面展示时请在客户端转换为本地时区（v1 现状，后续版本规划时区感知）。
 
 ### 密钥轮换

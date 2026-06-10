@@ -89,9 +89,9 @@ export async function requireUser(): Promise<SessionData> {
     redirect("/login");
   }
 
-  // 回查用户状态:停用用户会话立即失效
+  // 回查用户状态与角色:停用用户会话立即失效;role 以 DB 为准(降级即时生效)
   const rows = await db
-    .select({ status: users.status })
+    .select({ status: users.status, role: users.role })
     .from(users)
     .where(eq(users.id, session.userId))
     .limit(1);
@@ -105,6 +105,13 @@ export async function requireUser(): Promise<SessionData> {
       // Server Component 上下文中忽略此错误
     }
     redirect("/login");
+  }
+
+  // 若 DB 中 role 与 cookie 中 role 不一致,以 DB 为准覆盖——
+  // 保证管理员降级(admin→user)无需重新登录即时生效
+  const dbRole = rows[0]!.role as "admin" | "user";
+  if (dbRole !== session.role) {
+    session.role = dbRole;
   }
 
   return session;
