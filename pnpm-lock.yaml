@@ -14,6 +14,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@byok/shared':
+        specifier: workspace:*
+        version: link:../shared
       drizzle-orm:
         specifier: ^0.44.2
         version: 0.44.7(postgres@3.4.9)

@@ -10,9 +10,11 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate": "drizzle-kit generate",
-    "migrate": "drizzle-kit migrate"
+    "migrate": "drizzle-kit migrate",
+    "seed": "pnpm --filter @byok/shared build && tsc -p tsconfig.json && node dist/seed.js"
   },
   "dependencies": {
+    "@byok/shared": "workspace:*",
     "drizzle-orm": "^0.44.2",
     "postgres": "^3.4.7"
   },
