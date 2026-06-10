@@ -5,7 +5,7 @@ export interface GeneratedApiKey {
   plaintext: string;
   /** SHA-256 hex,入库字段 */
   keyHash: string;
-  /** 前 11 字符,后台识别用 */
+  /** 前 15 字符,后台识别用 */
   keyPrefix: string;
 }
 
@@ -15,7 +15,7 @@ export function generateApiKey(): GeneratedApiKey {
   return {
     plaintext,
     keyHash: hashApiKey(plaintext),
-    keyPrefix: plaintext.slice(0, 11),
+    keyPrefix: plaintext.slice(0, 15),
   };
 }
 
