@@ -2,8 +2,13 @@ node_modules
 **/node_modules
 **/.next
 **/dist
+# 排除所有层级的 env 文件:防止 gitignored 的 apps/*/.env.local 等泄漏进镜像
+# (历史教训:apps/console/.env.local 曾被 COPY 带入构建,既泄密钥又掩盖了
+#  构建期读环境变量的 bug——根级 .env.* 不匹配嵌套路径,必须用 **)
 .env
 .env.*
+**/.env
+**/.env.*
 deploy/.env
 *.log
 .git

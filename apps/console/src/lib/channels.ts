@@ -3,19 +3,10 @@ import { eq } from "drizzle-orm";
 import { channels, type Db } from "@byok/db";
 import { encryptSecret } from "@byok/shared";
 
-// MASTER_KEY 启动时校验:必填且 base64 解码后为 32 字节
-((): void => {
-  const key = process.env.MASTER_KEY;
-  if (!key) {
-    throw new Error("MASTER_KEY 环境变量未设置");
-  }
-  const decoded = Buffer.from(key, "base64");
-  if (decoded.length !== 32) {
-    throw new Error(
-      `MASTER_KEY base64 解码后必须为 32 字节,当前为 ${decoded.length} 字节`,
-    );
-  }
-})();
+// 注:MASTER_KEY 的校验在 app/admin/channels/actions.ts 的 getMasterKey() 中惰性进行
+// (请求时校验)。本模块不在导入时读取 MASTER_KEY——否则 `next build` 静态分析
+// 导入本模块即失败(构建环境无此密钥)。createChannel/rotateChannelCredential
+// 通过参数接收 masterKey,本身不读环境变量。
 
 export interface CreateChannelInput {
   providerId: string;
