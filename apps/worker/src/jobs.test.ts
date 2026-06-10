@@ -6,7 +6,7 @@ import { cleanupExpiredAuditLogs, resetRolledOverMonthlyBudgets } from "./jobs.j
 
 const DB_URL = process.env.DATABASE_URL_TEST ?? "postgres://byok:byok_dev@localhost:5432/byok";
 
-describe.skipIf(!!process.env.CI)("jobs(真 PG)", () => {
+describe("jobs(真 PG)", () => {
   const { db, sql } = createDb(DB_URL, { max: 2 });
   afterAll(async () => {
     await sql.end();

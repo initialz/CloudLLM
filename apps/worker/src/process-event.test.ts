@@ -26,7 +26,7 @@ const mkEvent = (keyId: string, eventId: string, over: Partial<UsageEvent> = {})
   },
 });
 
-describe.skipIf(!!process.env.CI)("processEvent(真 PG)", () => {
+describe("processEvent(真 PG)", () => {
   const { db, sql } = createDb(DB_URL, { max: 2 });
   let keyId: string;
   let userId: string;

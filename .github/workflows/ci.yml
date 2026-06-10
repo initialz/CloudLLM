@@ -7,6 +7,20 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: byok
+          POSTGRES_PASSWORD: byok_dev
+          POSTGRES_DB: byok
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U byok" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -17,7 +31,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm typecheck
+      - run: pnpm --filter @byok/db migrate
+        env:
+          DATABASE_URL: postgres://byok:byok_dev@localhost:5432/byok
       - run: pnpm test
+        env:
+          DATABASE_URL: postgres://byok:byok_dev@localhost:5432/byok
+          REDIS_URL: redis://localhost:6379
       - name: drizzle drift check
         run: |
           cd packages/db
