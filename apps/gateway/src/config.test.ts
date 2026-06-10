@@ -31,4 +31,9 @@ describe("loadConfig", () => {
   it("MASTER_KEY 非 32 字节拒绝", () => {
     expect(() => loadConfig({ ...validEnv, MASTER_KEY: "c2hvcnQ=" })).toThrow(/32/);
   });
+
+  it("非数字的数值型环境变量抛错并点名", () => {
+    expect(() => loadConfig({ ...validEnv, PORT: "abc" })).toThrow(/PORT/);
+    expect(() => loadConfig({ ...validEnv, BALANCE_TTL_SECONDS: "xyz" })).toThrow(/BALANCE_TTL_SECONDS/);
+  });
 });

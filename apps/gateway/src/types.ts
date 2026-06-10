@@ -84,11 +84,11 @@ export interface KeyRepo {
 
 export interface CatalogRepo {
   getModel(slug: string): Promise<ModelInfo | null>;
-  /** 该模型的 active 渠道映射(不含 cooldown 过滤,由 router 处理) */
+  /** 该模型的 active 渠道映射(实现方必须过滤非 active 渠道;cooldown 过滤由 router 处理) */
   getChannelsForModel(slug: string): Promise<ChannelChoice[]>;
 }
 
 export interface BudgetLoader {
-  /** 剩余 micro-CNY;null = 该主体没有预算(不限) */
+  /** 剩余 micro-CNY;null = 该主体没有预算(无限),对应 BalanceStore 的 "unlimited" 哨兵 */
   loadRemainingMicro(subject: BudgetSubject): Promise<bigint | null>;
 }
