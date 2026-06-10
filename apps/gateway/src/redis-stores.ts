@@ -1,8 +1,6 @@
 import type { Redis } from "ioredis";
+import { UNLIMITED_SENTINEL, balKey, cooldownKey } from "@byok/shared";
 import type { BalanceStore, BudgetSubject, CooldownStore, EventSink, UsageEvent } from "./types.js";
-
-const UNLIMITED_SENTINEL = "u";
-const balKey = (s: BudgetSubject) => `bal:${s.type}:${s.id}`;
 
 export class RedisBalanceStore implements BalanceStore {
   constructor(private redis: Redis, private defaultTtlSeconds = 60) {}
@@ -50,11 +48,11 @@ export class RedisCooldownStore implements CooldownStore {
   constructor(private redis: Redis) {}
 
   async isCooling(channelId: string): Promise<boolean> {
-    return (await this.redis.exists(`cooldown:${channelId}`)) === 1;
+    return (await this.redis.exists(cooldownKey(channelId))) === 1;
   }
 
   async markCooldown(channelId: string, seconds: number): Promise<void> {
-    await this.redis.set(`cooldown:${channelId}`, "1", "EX", seconds);
+    await this.redis.set(cooldownKey(channelId), "1", "EX", seconds);
   }
 }
 

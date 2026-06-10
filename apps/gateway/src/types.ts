@@ -1,3 +1,7 @@
+import type { BudgetSubject, UsageEvent, UsageTotals } from "@byok/shared";
+
+export type { BudgetSubject, UsageEvent, UsageTotals } from "@byok/shared";
+
 export type Protocol = "openai" | "anthropic";
 
 export interface AuthedKey {
@@ -9,11 +13,6 @@ export interface AuthedKey {
   /** null = 不限模型 */
   allowedModels: string[] | null;
   auditEnabled: boolean;
-}
-
-export interface BudgetSubject {
-  type: "user" | "team" | "app" | "key";
-  id: string;
 }
 
 export interface ModelInfo {
@@ -34,30 +33,6 @@ export interface ChannelChoice {
   upstreamModelId: string;
   priority: number;
   weight: number;
-}
-
-export interface UsageTotals {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-}
-
-export interface UsageEvent {
-  keyId: string;
-  modelSlug: string;
-  channelId: string | null;
-  usage: UsageTotals;
-  costCny: string;
-  latencyMs: number;
-  /** 到上游响应头的耗时(毫秒,严格说是 TTFB 而非首 token) */
-  ttftMs: number | null;
-  status: "ok" | "upstream_error" | "rejected";
-  errorCode: string | null;
-  /** ISO 时间戳 */
-  ts: string;
-  /** 仅 auditEnabled 的 Key 携带 */
-  audit?: { requestBody: unknown; responseBody: unknown };
 }
 
 // ── 端口(实现见 redis-stores.ts / db-access.ts,单测用 fake)──
