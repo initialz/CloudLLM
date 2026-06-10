@@ -26,15 +26,19 @@ export function loadWorkerConfig(env: Record<string, string | undefined>): Worke
     if (!Number.isFinite(v)) throw new Error(`环境变量 ${name} 必须是有效数字,得到: "${raw}"`);
     return v;
   };
+  const positive = (name: string, v: number): number => {
+    if (v <= 0) throw new Error(`环境变量 ${name} 必须为正数,得到: ${v}`);
+    return v;
+  };
   return {
     databaseUrl: required("DATABASE_URL"),
     redisUrl: required("REDIS_URL"),
     usageStream: env.USAGE_STREAM ?? DEFAULT_USAGE_STREAM,
     group: env.USAGE_GROUP ?? "console-worker",
     consumer: env.WORKER_CONSUMER ?? `${hostname()}-${process.pid}`,
-    auditRetentionDays: num("AUDIT_RETENTION_DAYS", 30),
-    jobIntervalMs: num("JOB_INTERVAL_MS", 3_600_000),
-    maxDeliveries: num("MAX_DELIVERIES", 5),
-    balanceTtlSeconds: num("BALANCE_TTL_SECONDS", 60),
+    auditRetentionDays: positive("AUDIT_RETENTION_DAYS", num("AUDIT_RETENTION_DAYS", 30)),
+    jobIntervalMs: positive("JOB_INTERVAL_MS", num("JOB_INTERVAL_MS", 3_600_000)),
+    maxDeliveries: positive("MAX_DELIVERIES", num("MAX_DELIVERIES", 5)),
+    balanceTtlSeconds: positive("BALANCE_TTL_SECONDS", num("BALANCE_TTL_SECONDS", 60)),
   };
 }

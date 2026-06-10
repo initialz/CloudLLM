@@ -19,4 +19,8 @@ describe("loadWorkerConfig", () => {
     expect(() => loadWorkerConfig({ REDIS_URL: "redis://x" })).toThrow(/DATABASE_URL/);
     expect(() => loadWorkerConfig({ ...validEnv, MAX_DELIVERIES: "abc" })).toThrow(/MAX_DELIVERIES/);
   });
+
+  it("MAX_DELIVERIES=0 抛错(必须为正数)", () => {
+    expect(() => loadWorkerConfig({ ...validEnv, MAX_DELIVERIES: "0" })).toThrow(/MAX_DELIVERIES/);
+  });
 });

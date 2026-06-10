@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { processEvent, type BalanceWrite } from "./process-event.js";
 
-const DB_URL = process.env.DATABASE_URL_TEST ?? "postgres://byok:byok_dev@localhost:5432/byok";
+const DB_URL = process.env.DATABASE_URL ?? process.env.DATABASE_URL_TEST ?? "postgres://byok:byok_dev@localhost:5432/byok";
 
 class FakeBalance {
   writes: Array<{ key: string; value: string; ttl: number }> = [];
@@ -26,7 +26,7 @@ const mkEvent = (keyId: string, eventId: string, over: Partial<UsageEvent> = {})
   },
 });
 
-describe.skipIf(!!process.env.CI)("processEvent(真 PG)", () => {
+describe("processEvent(真 PG)", () => {
   const { db, sql } = createDb(DB_URL, { max: 2 });
   let keyId: string;
   let userId: string;
