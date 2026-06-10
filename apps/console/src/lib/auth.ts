@@ -42,10 +42,16 @@ export async function verifyCredentials(email: string, password: string) {
 /**
  * 登录:验证凭证后写 cookie
  * 失败返回错误字符串(不区分"用户不存在/密码错",防止用户枚举)
+ * v1.1:仅管理员可登录控制台,非 admin 角色直接拒绝
  */
 export async function login(email: string, password: string): Promise<string | null> {
   const user = await verifyCredentials(email, password);
   if (!user) return "邮箱或密码错误";
+
+  // 仅管理员可登录控制台
+  if (user.role !== "admin") {
+    return "仅管理员可登录控制台";
+  }
 
   const nowSec = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {

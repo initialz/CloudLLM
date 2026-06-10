@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   createUserAction,
   toggleUserStatusAction,
-  changeUserRoleAction,
 } from "./actions";
 
 interface User {
@@ -36,11 +35,13 @@ export default function UsersClient({ users: initialUsers, currentUserId }: User
     const fd = new FormData();
     fd.set("email", createEmail);
     fd.set("password", createPassword);
+    // v1.1:创建账号 role 固定 admin
+    fd.set("role", "admin");
     const result = await createUserAction(fd);
     if (result.error) {
       setCreateError(result.error);
     } else {
-      setCreateSuccess("用户创建成功");
+      setCreateSuccess("管理员账号创建成功");
       setCreateEmail("");
       setCreatePassword("");
       setShowCreate(false);
@@ -60,26 +61,15 @@ export default function UsersClient({ users: initialUsers, currentUserId }: User
     }
   }
 
-  async function handleChangeRole(userId: string, currentRole: string) {
-    setActionError("");
-    const newRole = currentRole === "admin" ? "user" : "admin";
-    const result = await changeUserRoleAction(userId, newRole as "admin" | "user");
-    if (result.error) {
-      setActionError(result.error);
-    } else {
-      window.location.reload();
-    }
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold">用户管理</h1>
+        <h1 className="text-xl font-bold">管理员账号</h1>
         <button
           onClick={() => { setShowCreate(!showCreate); setCreateError(""); setCreateSuccess(""); }}
           className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700"
         >
-          + 新建用户
+          + 新建管理员
         </button>
       </div>
 
@@ -97,7 +87,7 @@ export default function UsersClient({ users: initialUsers, currentUserId }: User
 
       {showCreate && (
         <div className="mb-6 p-4 bg-white border border-gray-200 rounded-lg">
-          <h2 className="text-sm font-semibold mb-3">新建用户</h2>
+          <h2 className="text-sm font-semibold mb-3">新建管理员账号</h2>
           <form onSubmit={handleCreate} className="space-y-3">
             <div>
               <label className="block text-xs text-gray-600 mb-1">邮箱</label>
@@ -106,7 +96,7 @@ export default function UsersClient({ users: initialUsers, currentUserId }: User
                 value={createEmail}
                 onChange={(e) => setCreateEmail(e.target.value)}
                 className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-                placeholder="user@example.com"
+                placeholder="admin@example.com"
                 required
               />
             </div>
@@ -121,6 +111,7 @@ export default function UsersClient({ users: initialUsers, currentUserId }: User
                 required
               />
             </div>
+            {/* v1.1: role 固定 admin,不显示切换选项 */}
             {createError && (
               <p className="text-red-600 text-xs">{createError}</p>
             )}
@@ -148,7 +139,6 @@ export default function UsersClient({ users: initialUsers, currentUserId }: User
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="text-left px-4 py-3 font-medium text-gray-600">邮箱</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-600">角色</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">状态</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">创建时间</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">操作</th>
@@ -166,17 +156,6 @@ export default function UsersClient({ users: initialUsers, currentUserId }: User
                 <td className="px-4 py-3">
                   <span
                     className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
-                      user.role === "admin"
-                        ? "bg-purple-100 text-purple-700"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
-                  >
-                    {user.role === "admin" ? "管理员" : "用户"}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
                       user.status === "active"
                         ? "bg-green-100 text-green-700"
                         : "bg-red-100 text-red-700"
@@ -188,7 +167,8 @@ export default function UsersClient({ users: initialUsers, currentUserId }: User
                 <td className="px-4 py-3 text-gray-500">
                   {new Date(user.createdAt).toLocaleString("zh-CN")}
                 </td>
-                <td className="px-4 py-3 flex gap-2">
+                <td className="px-4 py-3">
+                  {/* 保留停用/启用;不可停用自己;移除改 role 按钮 */}
                   <button
                     onClick={() => handleToggleStatus(user.id, user.status)}
                     disabled={user.id === currentUserId && user.status === "active"}
@@ -205,27 +185,13 @@ export default function UsersClient({ users: initialUsers, currentUserId }: User
                   >
                     {user.status === "active" ? "停用" : "启用"}
                   </button>
-                  <button
-                    onClick={() => handleChangeRole(user.id, user.role)}
-                    disabled={user.id === currentUserId && user.role === "admin"}
-                    className={`text-xs px-2 py-1 rounded ${
-                      user.id === currentUserId && user.role === "admin"
-                        ? "bg-gray-50 text-gray-400 cursor-not-allowed"
-                        : "bg-blue-50 text-blue-600 hover:bg-blue-100"
-                    }`}
-                    title={
-                      user.id === currentUserId ? "不能降级自己" : ""
-                    }
-                  >
-                    {user.role === "admin" ? "降为用户" : "升为管理员"}
-                  </button>
                 </td>
               </tr>
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                  暂无用户
+                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                  暂无管理员账号
                 </td>
               </tr>
             )}

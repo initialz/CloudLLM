@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { requireUser } from "../../lib/auth";
+import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 import { aggregateUsage, visibleKeyIds } from "../../lib/reports";
 import { UsageFilters } from "./usage-client";
@@ -90,7 +90,8 @@ async function UsageTable({
 }
 
 export default async function UsagePage({ searchParams }: UsagePageProps) {
-  const session = await requireUser();
+  // 用量报表仅管理员可访问(v1.1)
+  const session = await requireAdmin();
   const params = await searchParams;
 
   // 默认近 7 天
@@ -120,7 +121,7 @@ export default async function UsagePage({ searchParams }: UsagePageProps) {
         to={toDate}
         dim={dim}
         userId={session.userId}
-        isAdmin={session.role === "admin"}
+        isAdmin={true}
       />
     </div>
   );

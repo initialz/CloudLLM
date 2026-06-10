@@ -19,24 +19,20 @@ interface ApiKey {
 interface KeysClientProps {
   initialKeys: ApiKey[];
   modelSlugs: string[];
-  isAdmin: boolean;
   currentUserId: string;
   userList: { id: string; email: string }[];
   teamList: { id: string; name: string }[];
-  appList: { id: string; name: string; teamId: string }[];
   /** Admin 预筛初始态(来自 URL searchParams) */
-  initialFilterOwnerType?: "user" | "team" | "app";
+  initialFilterOwnerType?: "user" | "team";
   initialFilterOwnerId?: string;
 }
 
 export default function KeysClient({
   initialKeys,
   modelSlugs,
-  isAdmin,
   currentUserId,
   userList,
   teamList,
-  appList,
   initialFilterOwnerType,
   initialFilterOwnerId,
 }: KeysClientProps) {
@@ -47,9 +43,9 @@ export default function KeysClient({
   const [isPending, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
 
-  // Admin owner type selector;初始态来自 URL 预筛参数
-  const [ownerType, setOwnerType] = useState<"user" | "team" | "app">(
-    initialFilterOwnerType ?? "user",
+  // 归属类型选择:v1.1 仅 team(推荐)/user;初始态来自 URL 预筛参数
+  const [ownerType, setOwnerType] = useState<"user" | "team">(
+    initialFilterOwnerType ?? "team",
   );
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
@@ -113,15 +109,15 @@ export default function KeysClient({
   }
 
   const getOwnerOptions = () => {
-    if (ownerType === "user") return userList.map((u) => ({ id: u.id, label: u.email }));
     if (ownerType === "team") return teamList.map((t) => ({ id: t.id, label: t.name }));
-    return appList.map((a) => ({ id: a.id, label: a.name }));
+    // ownerType === "user"(管理员自己)
+    return userList.map((u) => ({ id: u.id, label: u.email }));
   };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">API Key 管理</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Key 管理</h1>
         <button
           onClick={() => { setShowForm(true); setPlaintext(null); }}
           className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"
@@ -169,47 +165,44 @@ export default function KeysClient({
                 name="name"
                 type="text"
                 required
-                placeholder="如:生产环境 Key"
+                placeholder="如:张三的 Key"
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
-            {/* Admin: 归属主体选择 */}
-            {isAdmin && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    归属类型
-                  </label>
-                  <select
-                    name="ownerType"
-                    value={ownerType}
-                    onChange={(e) => setOwnerType(e.target.value as "user" | "team" | "app")}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="user">用户</option>
-                    <option value="team">团队</option>
-                    <option value="app">应用</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    归属实体
-                  </label>
-                  <select
-                    name="ownerId"
-                    defaultValue={initialFilterOwnerId ?? ""}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {getOwnerOptions().map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            {/* 归属主体选择:v1.1 仅 team/user */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  归属类型
+                </label>
+                <select
+                  name="ownerType"
+                  value={ownerType}
+                  onChange={(e) => setOwnerType(e.target.value as "user" | "team")}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="team">团队(推荐,成员 Key)</option>
+                  <option value="user">管理员自己(个人测试用)</option>
+                </select>
               </div>
-            )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  归属实体
+                </label>
+                <select
+                  name="ownerId"
+                  defaultValue={initialFilterOwnerId ?? ""}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {getOwnerOptions().map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
             {/* allowedModels 多选 */}
             <div>
@@ -350,23 +343,17 @@ export default function KeysClient({
                   {key.expiresAt ? key.expiresAt.toLocaleString("zh-CN") : "—"}
                 </td>
                 <td className="px-4 py-3 text-sm">
-                  {isAdmin ? (
-                    <button
-                      onClick={() => handleToggleAudit(key.id, key.auditEnabled)}
-                      disabled={isPending || key.status === "revoked"}
-                      className={`text-xs px-2 py-1 rounded ${
-                        key.auditEnabled
-                          ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                      } disabled:opacity-50`}
-                    >
-                      {key.auditEnabled ? "开" : "关"}
-                    </button>
-                  ) : (
-                    <span className="text-xs text-gray-500">
-                      {key.auditEnabled ? "开" : "关"}
-                    </span>
-                  )}
+                  <button
+                    onClick={() => handleToggleAudit(key.id, key.auditEnabled)}
+                    disabled={isPending || key.status === "revoked"}
+                    className={`text-xs px-2 py-1 rounded ${
+                      key.auditEnabled
+                        ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    } disabled:opacity-50`}
+                  >
+                    {key.auditEnabled ? "开" : "关"}
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-right">
                   {key.status === "active" && (
