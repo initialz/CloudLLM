@@ -11,10 +11,9 @@ export async function selectCandidates(
   rng: () => number = Math.random,
 ): Promise<ChannelChoice[]> {
   const all = await catalog.getChannelsForModel(modelSlug);
-  const usable: ChannelChoice[] = [];
-  for (const channel of all) {
-    if (!(await cooldown.isCooling(channel.channelId))) usable.push(channel);
-  }
+  // 并发查冷却状态:热路径上避免 N 次串行 Redis 往返
+  const cooling = await Promise.all(all.map((c) => cooldown.isCooling(c.channelId)));
+  const usable = all.filter((_, i) => !cooling[i]);
   const groups = new Map<number, ChannelChoice[]>();
   for (const channel of usable) {
     const group = groups.get(channel.priority) ?? [];
