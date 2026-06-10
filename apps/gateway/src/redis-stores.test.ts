@@ -23,6 +23,23 @@ describe("RedisBalanceStore", () => {
     const r = await store.getMany([subject, { type: "team", id: "t1" }, { type: "user", id: "nope" }]);
     expect(r).toEqual([70n, "unlimited", null]);
   });
+
+  it("脏值按未命中(null)返回而不抛错", async () => {
+    const redis = new RedisMock() as unknown as Redis;
+    const store = new RedisBalanceStore(redis);
+    await (redis as unknown as { set(k: string, v: string): Promise<unknown> }).set("bal:key:bad", "abc");
+    const r = await store.getMany([{ type: "key", id: "bad" }]);
+    expect(r).toEqual([null]);
+  });
+
+  it("decrBy 后键带 TTL(防无 TTL 负键)", async () => {
+    const redis = new RedisMock() as unknown as Redis;
+    const store = new RedisBalanceStore(redis, 60);
+    await store.set(subject, 100n, 60);
+    await store.decrBy([subject], 30n);
+    const ttl = await (redis as unknown as { ttl(k: string): Promise<number> }).ttl("bal:key:k1");
+    expect(ttl).toBeGreaterThan(0);
+  });
 });
 
 describe("RedisCooldownStore", () => {
