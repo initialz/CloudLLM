@@ -51,6 +51,15 @@ describe("subjectsForKey", () => {
       { type: "user", id: "u1" },
     ]);
   });
+
+  it("团队直属 Key 产生 key/team 两层(不重复 team)", () => {
+    expect(
+      subjectsForKey({ ...appKey, ownerType: "team", ownerId: "t1", teamId: null }),
+    ).toEqual([
+      { type: "key", id: "k1" },
+      { type: "team", id: "t1" },
+    ]);
+  });
 });
 
 describe("checkBudgets", () => {

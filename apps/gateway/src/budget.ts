@@ -28,6 +28,8 @@ export async function checkBudgets(
     if (value === null) {
       const loaded = await loader.loadRemainingMicro(subject);
       value = loaded === null ? "unlimited" : loaded;
+      // 注意:load→set 间有并发 decrBy 被覆盖的窗口,最多 1 个 TTL 内自愈;
+      // 规格 §4.4 接受少量超透,PG 台账为事实源,worker 落库时校正
       await store.set(subject, value, ttlSeconds);
     }
     if (value !== "unlimited" && value <= 0n) {
@@ -43,6 +45,9 @@ export async function settleBudgets(
   subjects: BudgetSubject[],
   costMicro: bigint,
 ): Promise<void> {
+  if (costMicro < 0n) {
+    throw new Error(`结算金额不能为负: ${costMicro}`);
+  }
   if (costMicro > 0n) {
     await store.decrBy(subjects, costMicro);
   }
