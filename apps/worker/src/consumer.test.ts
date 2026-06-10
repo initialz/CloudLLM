@@ -1,7 +1,7 @@
 /**
  * consumer.test.ts
  *
- * ioredis-mock@8.13.1 不支持任何 Stream 命令(xgroup/xreadgroup/xpending/xautoclaim/xadd/xack),
+ * ioredis-mock@8.13.1 不支持消费组类 Stream 命令(xgroup/xreadgroup/xpending/xautoclaim/xack;xadd/xrange 是支持的),
  * 因此改为使用 vi.fn() 构造最小 Redis stub 模拟 Stream 接口,不改变实现语义。
  * claimStale(依赖 xautoclaim)已省略专项用例,改由 e2e 真 Redis 验证。
  */
