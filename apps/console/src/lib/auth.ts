@@ -6,14 +6,19 @@ import { verifyPassword } from "@byok/shared";
 import { db } from "./db";
 import { decodeSession, encodeSession, type SessionData } from "./session";
 
-// SESSION_SECRET 启动时校验:必填且 ≥32 字符
-const SESSION_SECRET = ((): string => {
+// SESSION_SECRET 惰性校验:首次使用(运行时请求)时校验并缓存,而非模块导入时。
+// 避免 `next build` 导入本模块即读环境变量而失败(构建环境无此密钥)。
+// fail-fast 仍在:配错时首个命中会话逻辑的请求(含 /login 就绪探针)即抛错。
+let _sessionSecret: string | undefined;
+function getSessionSecret(): string {
+  if (_sessionSecret) return _sessionSecret;
   const s = process.env.SESSION_SECRET;
   if (!s || s.length < 32) {
     throw new Error("SESSION_SECRET 必须设置且长度 ≥32 字符");
   }
+  _sessionSecret = s;
   return s;
-})();
+}
 
 const COOKIE_NAME = "byok_session";
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 天
@@ -59,7 +64,7 @@ export async function login(email: string, password: string): Promise<string | n
     role: user.role as "admin" | "user",
     exp: nowSec + SESSION_TTL_SECONDS,
   };
-  const value = encodeSession(sessionData, SESSION_SECRET);
+  const value = encodeSession(sessionData, getSessionSecret());
 
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, value, {
@@ -90,7 +95,7 @@ export async function logout(): Promise<void> {
 export async function requireUser(): Promise<SessionData> {
   const cookieStore = await cookies();
   const raw = cookieStore.get(COOKIE_NAME)?.value;
-  const session = decodeSession(raw, SESSION_SECRET);
+  const session = decodeSession(raw, getSessionSecret());
   if (!session) {
     redirect("/login");
   }
