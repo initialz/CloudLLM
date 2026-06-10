@@ -192,4 +192,19 @@ describe("reports", () => {
     );
     expect(rows).toEqual([]);
   });
+
+  it("按 day 聚合:bucket 为 YYYY-MM-DD 且计数正确", async () => {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const rows = await aggregateUsage(
+      db,
+      { from: dayAgo, to: tomorrow, keyIds: [key1Id, key2Id] },
+      "day",
+    );
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    expect(rows[0]!.bucket).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const total = rows.reduce((s, r) => s + r.requests, 0);
+    expect(total).toBe(4); // 造数共 4 条记录
+  });
 });
