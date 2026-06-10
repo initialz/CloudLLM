@@ -38,6 +38,7 @@ export interface ModelPrices {
 function lineCostMicro(tokens: number, pricePerMTok: string): bigint {
   if (tokens === 0) return 0n;
   const priceMicro = cnyToMicro(pricePerMTok);
+  if (priceMicro < 0n) throw new Error(`模型单价不能为负: ${pricePerMTok}`);
   const numerator = BigInt(tokens) * priceMicro;
   return (numerator + MICRO - 1n) / MICRO; // ceil div
 }

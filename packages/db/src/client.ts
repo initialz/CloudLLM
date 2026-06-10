@@ -10,6 +10,7 @@ export function createDb(databaseUrl: string, options?: { max?: number }) {
   const sql = postgres(databaseUrl, {
     max: options?.max ?? 10,
     idle_timeout: 30,
+    connect_timeout: 10,
   });
   const db = drizzle(sql, { schema });
   return { db, sql };
