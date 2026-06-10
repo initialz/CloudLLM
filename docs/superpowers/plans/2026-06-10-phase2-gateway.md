@@ -1541,9 +1541,9 @@ export async function forwardWithFailover(opts: ForwardOptions): Promise<Forward
 
   for (const channel of opts.candidates) {
     const body: Record<string, unknown> = { ...opts.requestBody, model: channel.upstreamModelId };
-    if (opts.protocol === "openai" && isStream && body.stream_options === undefined) {
-      // 计量必需:让上游在最终 chunk 返回 usage;对调用方透明
-      body.stream_options = { include_usage: true };
+    if (opts.protocol === "openai" && isStream) {
+      // 计量必需:强制合并 include_usage(客户端自带 stream_options 也不能关掉,否则整条流零计费)
+      body.stream_options = { ...(body.stream_options as object | undefined), include_usage: true };
     }
 
     const credential = decryptSecret(channel.credentialEncrypted, opts.masterKey, channel.channelId);
@@ -2019,6 +2019,7 @@ export function createApp(deps: AppDeps): Hono {
       cooldown: deps.cooldown,
       cooldownSeconds: deps.cooldownSeconds,
       anthropicVersion: req.headers.get("anthropic-version") ?? undefined,
+      anthropicBeta: req.headers.get("anthropic-beta") ?? undefined,
       fetchImpl: deps.fetchImpl,
     });
 
@@ -2204,10 +2205,11 @@ const app = createApp({
   keyRepo: new DrizzleKeyRepo(db),
   catalog: new DrizzleCatalogRepo(db),
   loader: new DrizzleBudgetLoader(db),
-  balance: new RedisBalanceStore(redis),
+  balance: new RedisBalanceStore(redis, config.balanceTtlSeconds),
   cooldown: new RedisCooldownStore(redis),
   events: new RedisEventSink(redis, config.usageStream),
 });
+// 注:RedisEventSink 内部以 MAXLEN ~ 500000 近似裁剪流,防 worker 滞后时无界增长
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`gateway 监听 :${info.port}`);

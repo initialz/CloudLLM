@@ -1,12 +1,13 @@
 const MICRO = 1_000_000n;
 
-/** "12.345678" → 12345678n(micro-CNY)。最多 6 位小数。 */
+/** "12.345678"/"-1.5" → micro-CNY bigint。最多 6 位小数,支持负号(台账冲正读回)。 */
 export function cnyToMicro(cny: string): bigint {
-  const m = /^(\d+)(?:\.(\d{1,6}))?$/.exec(cny.trim());
+  const m = /^(-)?(\d+)(?:\.(\d{1,6}))?$/.exec(cny.trim());
   if (!m) throw new Error(`非法 CNY 金额: ${cny}`);
-  const whole = BigInt(m[1]!);
-  const frac = BigInt((m[2] ?? "").padEnd(6, "0") || "0");
-  return whole * MICRO + frac;
+  const whole = BigInt(m[2]!);
+  const frac = BigInt((m[3] ?? "").padEnd(6, "0") || "0");
+  const abs = whole * MICRO + frac;
+  return m[1] ? -abs : abs;
 }
 
 /** 12345678n → "12.345678";支持负数(如台账冲正):-1500000n → "-1.500000" */
@@ -37,6 +38,7 @@ export interface ModelPrices {
 function lineCostMicro(tokens: number, pricePerMTok: string): bigint {
   if (tokens === 0) return 0n;
   const priceMicro = cnyToMicro(pricePerMTok);
+  if (priceMicro < 0n) throw new Error(`模型单价不能为负: ${pricePerMTok}`);
   const numerator = BigInt(tokens) * priceMicro;
   return (numerator + MICRO - 1n) / MICRO; // ceil div
 }
