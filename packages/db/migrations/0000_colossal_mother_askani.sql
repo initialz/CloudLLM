@@ -9,7 +9,8 @@ CREATE TABLE "api_keys" (
 	"audit_enabled" boolean DEFAULT false NOT NULL,
 	"expires_at" timestamp with time zone,
 	"status" text DEFAULT 'active' NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "apps" (
@@ -31,7 +32,8 @@ CREATE TABLE "budgets" (
 	"period_start" timestamp with time zone,
 	"alert_threshold" numeric(5, 4),
 	"status" text DEFAULT 'active' NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "budgets_alert_threshold_range" CHECK (alert_threshold IS NULL OR (alert_threshold >= 0 AND alert_threshold <= 1))
 );
 --> statement-breakpoint
 CREATE TABLE "channels" (
@@ -147,18 +149,20 @@ CREATE TABLE "users" (
 --> statement-breakpoint
 ALTER TABLE "apps" ADD CONSTRAINT "apps_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "channels" ADD CONSTRAINT "channels_provider_id_providers_id_fk" FOREIGN KEY ("provider_id") REFERENCES "public"."providers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "ledger_entries" ADD CONSTRAINT "ledger_entries_usage_record_id_usage_records_id_fk" FOREIGN KEY ("usage_record_id") REFERENCES "public"."usage_records"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ledger_entries" ADD CONSTRAINT "ledger_entries_usage_record_id_usage_records_id_fk" FOREIGN KEY ("usage_record_id") REFERENCES "public"."usage_records"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "model_channels" ADD CONSTRAINT "model_channels_model_id_models_id_fk" FOREIGN KEY ("model_id") REFERENCES "public"."models"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "model_channels" ADD CONSTRAINT "model_channels_channel_id_channels_id_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "request_logs" ADD CONSTRAINT "request_logs_usage_record_id_usage_records_id_fk" FOREIGN KEY ("usage_record_id") REFERENCES "public"."usage_records"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "request_logs" ADD CONSTRAINT "request_logs_usage_record_id_usage_records_id_fk" FOREIGN KEY ("usage_record_id") REFERENCES "public"."usage_records"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "team_members" ADD CONSTRAINT "team_members_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "team_members" ADD CONSTRAINT "team_members_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "usage_records" ADD CONSTRAINT "usage_records_key_id_api_keys_id_fk" FOREIGN KEY ("key_id") REFERENCES "public"."api_keys"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "usage_records" ADD CONSTRAINT "usage_records_channel_id_channels_id_fk" FOREIGN KEY ("channel_id") REFERENCES "public"."channels"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "api_keys_key_hash_idx" ON "api_keys" USING btree ("key_hash");--> statement-breakpoint
 CREATE INDEX "api_keys_owner_idx" ON "api_keys" USING btree ("owner_type","owner_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "budgets_subject_idx" ON "budgets" USING btree ("subject_type","subject_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "budgets_subject_idx" ON "budgets" USING btree ("subject_type","subject_id","period");--> statement-breakpoint
 CREATE INDEX "ledger_subject_time_idx" ON "ledger_entries" USING btree ("subject_type","subject_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "model_channels_pair_idx" ON "model_channels" USING btree ("model_id","channel_id");--> statement-breakpoint
 CREATE INDEX "request_logs_expires_idx" ON "request_logs" USING btree ("expires_at");--> statement-breakpoint
-CREATE INDEX "usage_records_key_time_idx" ON "usage_records" USING btree ("key_id","created_at");
+CREATE INDEX "usage_records_key_time_idx" ON "usage_records" USING btree ("key_id","created_at");--> statement-breakpoint
+CREATE INDEX "usage_records_channel_time_idx" ON "usage_records" USING btree ("channel_id","created_at");--> statement-breakpoint
+CREATE INDEX "usage_records_model_time_idx" ON "usage_records" USING btree ("model_slug","created_at");

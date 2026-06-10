@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -74,6 +76,7 @@ export const apiKeys = pgTable(
       .notNull()
       .default("active"),
     createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("api_keys_key_hash_idx").on(t.keyHash),
@@ -97,7 +100,10 @@ export const budgets = pgTable(
     status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("budgets_subject_idx").on(t.subjectType, t.subjectId)],
+  (t) => [
+    uniqueIndex("budgets_subject_idx").on(t.subjectType, t.subjectId, t.period),
+    check("budgets_alert_threshold_range", sql`alert_threshold IS NULL OR (alert_threshold >= 0 AND alert_threshold <= 1)`),
+  ],
 );
 
 // ── 供应商 / 渠道 / 模型 ─────────────────────────────────
@@ -179,7 +185,11 @@ export const usageRecords = pgTable(
     errorCode: text("error_code"),
     createdAt: createdAt(),
   },
-  (t) => [index("usage_records_key_time_idx").on(t.keyId, t.createdAt)],
+  (t) => [
+    index("usage_records_key_time_idx").on(t.keyId, t.createdAt),
+    index("usage_records_channel_time_idx").on(t.channelId, t.createdAt),
+    index("usage_records_model_time_idx").on(t.modelSlug, t.createdAt),
+  ],
 );
 
 export const ledgerEntries = pgTable(
@@ -189,7 +199,7 @@ export const ledgerEntries = pgTable(
     subjectType: text("subject_type", { enum: ["user", "team", "app", "key"] }).notNull(),
     subjectId: uuid("subject_id").notNull(),
     amountCny: cny("amount_cny").notNull(),
-    usageRecordId: uuid("usage_record_id").references(() => usageRecords.id),
+    usageRecordId: uuid("usage_record_id").references(() => usageRecords.id, { onDelete: "set null" }),
     balanceAfterCny: cny("balance_after_cny"),
     createdAt: createdAt(),
   },
@@ -203,7 +213,7 @@ export const requestLogs = pgTable(
     usageRecordId: uuid("usage_record_id")
       .notNull()
       .unique()
-      .references(() => usageRecords.id),
+      .references(() => usageRecords.id, { onDelete: "cascade" }),
     requestBody: jsonb("request_body"),
     responseBody: jsonb("response_body"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
