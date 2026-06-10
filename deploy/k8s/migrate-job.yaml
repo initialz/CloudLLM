@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: byok-migrate
+  namespace: byok
+  labels:
+    app.kubernetes.io/name: byok-migrate
+    app.kubernetes.io/part-of: byok
+  annotations:
+    # 升级时先删除旧 Job 再重新 apply，或使用 kubectl create 而非 apply
+    # kubectl delete job byok-migrate -n byok --ignore-not-found
+    # kubectl apply -f migrate-job.yaml
+spec:
+  # 完成后 600 秒自动清理（保留日志供查看），设为 0 立即清理
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: byok-migrate
+        app.kubernetes.io/part-of: byok
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          # 使用 worker 镜像执行迁移脚本（@byok/db 编译产物）
+          # 替换 <registry> 和 <tag> 为实际镜像地址
+          image: <registry>/byok-worker:<tag>
+          command: ["node", "node_modules/@byok/db/dist/migrate.js"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: byok-secrets
+                  key: DATABASE_URL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

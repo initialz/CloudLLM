@@ -150,6 +150,8 @@ DATABASE_URL=postgres://byok:byok_dev@localhost:15432/byok \
 
 ## 生产部署（Docker Compose）
 
+> K8s 部署方式（多节点高可用、水平扩缩容）：见 [deploy/k8s/README.md](deploy/k8s/README.md)
+
 ### 1. 准备 .env
 
 ```bash
