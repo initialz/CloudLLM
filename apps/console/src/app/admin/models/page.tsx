@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { channels, modelChannels, models } from "@byok/db";
+import { channels, modelChannels, models, providers } from "@byok/db";
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
 import ModelsClient from "./models-client";
@@ -30,6 +30,7 @@ export interface ModelRow {
 export interface ChannelOption {
   id: string;
   name: string;
+  providerType: string;
 }
 
 export default async function AdminModelsPage() {
@@ -64,8 +65,9 @@ export default async function AdminModelsPage() {
       .from(modelChannels)
       .innerJoin(channels, eq(channels.id, modelChannels.channelId)),
     db
-      .select({ id: channels.id, name: channels.name })
+      .select({ id: channels.id, name: channels.name, providerType: providers.type })
       .from(channels)
+      .innerJoin(providers, eq(providers.id, channels.providerId))
       .where(eq(channels.status, "active"))
       .orderBy(channels.name),
   ]);

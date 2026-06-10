@@ -37,8 +37,13 @@ export async function createChannelAction(formData: FormData): Promise<ChannelAc
     revalidatePath("/admin/channels");
     return { success: true };
   } catch (err: unknown) {
+    console.error("createChannelAction error:", err instanceof Error ? err.message : String(err));
     const msg = err instanceof Error ? err.message : String(err);
-    return { error: msg };
+    // 凭证/格式类校验错误保留原信息;其他 DB 异常返回通用文案
+    const isValidationError =
+      msg.includes("baseUrl 必须以 /v1 结尾") ||
+      msg.includes("MASTER_KEY");
+    return { error: isValidationError ? msg : "操作失败,请查看服务端日志" };
   }
 }
 
@@ -53,8 +58,8 @@ export async function disableChannelAction(channelId: string): Promise<ChannelAc
     revalidatePath("/admin/channels");
     return { success: true };
   } catch (err) {
-    console.error("disableChannelAction error:", err);
-    return { error: "操作失败,请重试" };
+    console.error("disableChannelAction error:", err instanceof Error ? err.message : String(err));
+    return { error: "操作失败,请查看服务端日志" };
   }
 }
 
@@ -69,8 +74,8 @@ export async function enableChannelAction(channelId: string): Promise<ChannelAct
     revalidatePath("/admin/channels");
     return { success: true };
   } catch (err) {
-    console.error("enableChannelAction error:", err);
-    return { error: "操作失败,请重试" };
+    console.error("enableChannelAction error:", err instanceof Error ? err.message : String(err));
+    return { error: "操作失败,请查看服务端日志" };
   }
 }
 
@@ -89,7 +94,9 @@ export async function rotateCredentialAction(
     revalidatePath("/admin/channels");
     return { success: true };
   } catch (err: unknown) {
+    console.error("rotateCredentialAction error:", err instanceof Error ? err.message : String(err));
     const msg = err instanceof Error ? err.message : String(err);
-    return { error: msg };
+    const isValidationError = msg.includes("MASTER_KEY");
+    return { error: isValidationError ? msg : "操作失败,请查看服务端日志" };
   }
 }

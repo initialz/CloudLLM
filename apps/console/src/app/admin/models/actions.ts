@@ -2,7 +2,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { modelChannels, models } from "@byok/db";
+import { channels, modelChannels, models, providers } from "@byok/db";
 import { cnyToMicro } from "@byok/shared";
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
@@ -39,6 +39,8 @@ export async function createModelAction(formData: FormData): Promise<ModelAction
   const contextLengthRaw = (formData.get("contextLength") as string | null)?.trim() ?? "";
 
   if (!slug) return { error: "slug 不能为空" };
+  if (!/^[a-z0-9_.\-]+\/[a-z0-9_.\-]+$/i.test(slug))
+    return { error: "slug 格式无效(示例: openai/gpt-4o)" };
   if (!displayName) return { error: "显示名不能为空" };
   if (!["openai", "anthropic"].includes(providerType)) return { error: "供应商类型无效" };
 
@@ -85,8 +87,8 @@ export async function createModelAction(formData: FormData): Promise<ModelAction
       causeMsg.includes("unique constraint") ||
       causeMsg.includes("duplicate key");
     if (isUnique) return { error: `slug "${slug}" 已存在,请使用唯一 slug` };
-    console.error("createModelAction error:", err);
-    return { error: "创建失败,请重试" };
+    console.error("createModelAction error:", err instanceof Error ? err.message : String(err));
+    return { error: "操作失败,请查看服务端日志" };
   }
 }
 
@@ -105,8 +107,8 @@ export async function toggleModelStatusAction(
     revalidatePath("/admin/models");
     return { success: true };
   } catch (err) {
-    console.error("toggleModelStatusAction error:", err);
-    return { error: "操作失败,请重试" };
+    console.error("toggleModelStatusAction error:", err instanceof Error ? err.message : String(err));
+    return { error: "操作失败,请查看服务端日志" };
   }
 }
 
@@ -119,8 +121,8 @@ export async function deleteModelAction(modelId: string): Promise<ModelActionRes
     revalidatePath("/admin/models");
     return { success: true };
   } catch (err) {
-    console.error("deleteModelAction error:", err);
-    return { error: "删除失败,请重试" };
+    console.error("deleteModelAction error:", err instanceof Error ? err.message : String(err));
+    return { error: "操作失败,请查看服务端日志" };
   }
 }
 
@@ -143,6 +145,31 @@ export async function createModelChannelAction(
   const weight = parseInt(weightRaw, 10);
   if (isNaN(priority)) return { error: "priority 必须为整数" };
   if (isNaN(weight) || weight < 1) return { error: "weight 必须为正整数" };
+
+  // 校验渠道 provider 与模型 providerType 是否一致
+  try {
+    const [modelRow] = await db
+      .select({ providerType: models.providerType })
+      .from(models)
+      .where(eq(models.id, modelId))
+      .limit(1);
+    const [channelRow] = await db
+      .select({ providerType: providers.type })
+      .from(channels)
+      .innerJoin(providers, eq(providers.id, channels.providerId))
+      .where(eq(channels.id, channelId))
+      .limit(1);
+    if (!modelRow) return { error: "模型不存在" };
+    if (!channelRow) return { error: "渠道不存在" };
+    if (channelRow.providerType !== modelRow.providerType) {
+      return {
+        error: `渠道 provider(${channelRow.providerType})与模型 providerType(${modelRow.providerType})不匹配`,
+      };
+    }
+  } catch (err) {
+    console.error("createModelChannelAction provider check error:", err instanceof Error ? err.message : String(err));
+    return { error: "操作失败,请查看服务端日志" };
+  }
 
   try {
     await db.insert(modelChannels).values({
@@ -167,8 +194,8 @@ export async function createModelChannelAction(
       causeMsg.includes("unique constraint") ||
       causeMsg.includes("duplicate key");
     if (isUnique) return { error: "该模型与渠道的映射已存在" };
-    console.error("createModelChannelAction error:", err);
-    return { error: "创建映射失败,请重试" };
+    console.error("createModelChannelAction error:", err instanceof Error ? err.message : String(err));
+    return { error: "操作失败,请查看服务端日志" };
   }
 }
 
@@ -185,7 +212,7 @@ export async function deleteModelChannelAction(
     revalidatePath("/admin/models");
     return { success: true };
   } catch (err) {
-    console.error("deleteModelChannelAction error:", err);
-    return { error: "删除映射失败,请重试" };
+    console.error("deleteModelChannelAction error:", err instanceof Error ? err.message : String(err));
+    return { error: "操作失败,请查看服务端日志" };
   }
 }

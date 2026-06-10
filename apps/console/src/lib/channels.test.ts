@@ -112,7 +112,7 @@ describe("channels", () => {
     ).rejects.toThrow("baseUrl 必须以 /v1 结尾");
   });
 
-  it("rotate 后:旧密文(原 AAD)不匹配新密文,新密文可解回新凭证", async () => {
+  it("轮换后库内为新密文(旧密文仍可解出旧值——AAD 未变,失效是治理属性非密码学属性)", async () => {
     const oldCredential = "sk-old-credential";
     const newCredential = "sk-new-credential-after-rotate";
 

@@ -323,7 +323,9 @@ export default function ModelsClient({ models: initialModels, channelOptions }: 
                   <button
                     onClick={() => {
                       setAddMappingModelId(addMappingModelId === m.id ? null : m.id);
-                      setMappingChannelId(channelOptions[0]?.id ?? "");
+                      setMappingChannelId(
+                        channelOptions.find((c) => c.providerType === m.providerType)?.id ?? "",
+                      );
                       setMappingUpstreamModelId("");
                       setMappingPriority("0");
                       setMappingWeight("1");
@@ -347,11 +349,13 @@ export default function ModelsClient({ models: initialModels, channelOptions }: 
                           required
                         >
                           <option value="">选择渠道...</option>
-                          {channelOptions.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
+                          {channelOptions
+                            .filter((c) => c.providerType === m.providerType)
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
                         </select>
                       </div>
                       <div>
