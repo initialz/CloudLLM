@@ -1,6 +1,15 @@
 import { and, eq } from "drizzle-orm";
+import { PgDatabase } from "drizzle-orm/pg-core";
 import { apiKeys, type Db } from "@byok/db";
 import { generateApiKey } from "@byok/shared";
+
+/**
+ * DbOrTx: createApiKey/revokeApiKey が受け取る db の型。
+ * Db (PostgresJsDatabase) も db.transaction コールバック内の tx (PgTransaction) も
+ * どちらも PgDatabase を継承しているため、PgDatabase に広げることで両方対応できる。
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DbOrTx = PgDatabase<any, any, any>;
 
 export interface CreateKeyInput {
   ownerType: "user" | "team" | "app";
@@ -13,7 +22,7 @@ export interface CreateKeyInput {
 }
 
 /** 签发 Key:返回明文(仅此一次)与行 id */
-export async function createApiKey(db: Db, input: CreateKeyInput): Promise<{ plaintext: string; id: string }> {
+export async function createApiKey(db: Db | DbOrTx, input: CreateKeyInput): Promise<{ plaintext: string; id: string }> {
   const k = generateApiKey();
   const rows = await db
     .insert(apiKeys)
@@ -32,7 +41,7 @@ export async function createApiKey(db: Db, input: CreateKeyInput): Promise<{ pla
 }
 
 /** 撤销:仅状态翻转,不删行(usage_records 软引用历史) */
-export async function revokeApiKey(db: Db, keyId: string, ownerGuard: { ownerType: string; ownerId: string } | null): Promise<boolean> {
+export async function revokeApiKey(db: Db | DbOrTx, keyId: string, ownerGuard: { ownerType: string; ownerId: string } | null): Promise<boolean> {
   const conds = [eq(apiKeys.id, keyId)];
   if (ownerGuard) {
     conds.push(eq(apiKeys.ownerType, ownerGuard.ownerType as "user" | "team" | "app"));

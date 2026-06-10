@@ -2,7 +2,8 @@
 
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { apiKeys, models } from "@byok/db";
+import { apiKeys, budgets, models } from "@byok/db";
+import { cnyToMicro } from "@byok/shared";
 import { requireUser, requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 import { createApiKey, revokeApiKey } from "../../lib/keys";
@@ -62,14 +63,56 @@ export async function createKeyAction(formData: FormData): Promise<CreateKeyResu
     return { error: "过期时间必须是未来的有效时间" };
   }
 
+  // ── 预算参数解析 ──────────────────────────────────────────────────────────
+  const budgetLimitRaw = (formData.get("budgetLimit") as string | null)?.trim() ?? "";
+  const budgetPeriod = (formData.get("budgetPeriod") as string | null) ?? "monthly";
+  const hasBudget = budgetLimitRaw !== "" && budgetLimitRaw !== "0";
+
+  if (hasBudget) {
+    if (!["monthly", "total"].includes(budgetPeriod)) {
+      return { error: "预算周期必须为 monthly 或 total" };
+    }
+    try {
+      const micro = cnyToMicro(budgetLimitRaw);
+      if (micro <= BigInt(0)) return { error: "预算限额必须为正数" };
+    } catch {
+      return { error: "预算金额格式无效(示例: 100 或 100.50,最多 6 位小数)" };
+    }
+  }
+
   try {
-    const result = await createApiKey(db, {
-      ownerType,
-      ownerId,
-      name,
-      allowedModels,
-      auditEnabled,
-      expiresAt,
+    // 优先用 db.transaction 把 createApiKey insert 与 budgets insert 包在一起
+    // 若 budget insert 失败,事务自动回滚,Key 不会残留
+    const result = await db.transaction(async (tx) => {
+      const keyResult = await createApiKey(tx, {
+        ownerType,
+        ownerId,
+        name,
+        allowedModels,
+        auditEnabled,
+        expiresAt,
+      });
+
+      if (hasBudget) {
+        // monthly: periodStart = 本月初(UTC)
+        let periodStart: Date | null = null;
+        if (budgetPeriod === "monthly") {
+          const now = new Date();
+          periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        }
+
+        await tx.insert(budgets).values({
+          subjectType: "key",
+          subjectId: keyResult.id,
+          period: budgetPeriod as "monthly" | "total",
+          limitAmountCny: budgetLimitRaw,
+          usedAmountCny: "0",
+          periodStart,
+          status: "active",
+        });
+      }
+
+      return keyResult;
     });
 
     revalidatePath("/keys");

@@ -4,6 +4,9 @@ import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 import KeysClient from "./keys-client";
 
+// 网关对外地址,由 server 端读 env 透传给客户端
+const GATEWAY_PUBLIC_URL = process.env.GATEWAY_PUBLIC_URL ?? "";
+
 interface KeysPageProps {
   searchParams: Promise<{ ownerType?: string; ownerId?: string }>;
 }
@@ -74,6 +77,7 @@ export default async function KeysPage({ searchParams }: KeysPageProps) {
       teamList={teamList}
       initialFilterOwnerType={filterOwnerType}
       initialFilterOwnerId={filterOwnerId}
+      gatewayUrl={GATEWAY_PUBLIC_URL}
     />
   );
 }
