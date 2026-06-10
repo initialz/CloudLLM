@@ -19,5 +19,8 @@ describe("parseUsageEvent", () => {
     expect(parseUsageEvent(JSON.stringify({ ...valid, costCny: 123 }))).toBeNull();
     expect(parseUsageEvent(JSON.stringify({ ...valid, status: "weird" }))).toBeNull();
     expect(parseUsageEvent(JSON.stringify({ ...valid, usage: { inputTokens: "x" } }))).toBeNull();
+    expect(parseUsageEvent(JSON.stringify({ ...valid, costCny: "abc" }))).toBeNull();
+    expect(parseUsageEvent(JSON.stringify({ ...valid, costCny: "1.2.3" }))).toBeNull();
+    expect(parseUsageEvent(JSON.stringify({ ...valid, ts: "garbage" }))).toBeNull();
   });
 });

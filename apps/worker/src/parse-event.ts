@@ -24,12 +24,12 @@ export function parseUsageEvent(payload: string): UsageEvent | null {
     !u ||
     !isNum(u.inputTokens) || !isNum(u.outputTokens) ||
     !isNum(u.cacheReadTokens) || !isNum(u.cacheWriteTokens) ||
-    typeof e.costCny !== "string" ||
+    typeof e.costCny !== "string" || !/^-?\d+(\.\d{1,6})?$/.test(e.costCny) ||
     !isNum(e.latencyMs) ||
     !(e.ttftMs === null || isNum(e.ttftMs)) ||
     typeof e.status !== "string" || !STATUSES.has(e.status) ||
     !(e.errorCode === null || typeof e.errorCode === "string") ||
-    typeof e.ts !== "string"
+    typeof e.ts !== "string" || isNaN(new Date(e.ts).getTime())
   ) {
     return null;
   }
