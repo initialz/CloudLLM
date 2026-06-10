@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { cleanupExpiredAuditLogs, resetRolledOverMonthlyBudgets } from "./jobs.js";
 
-const DB_URL = process.env.DATABASE_URL_TEST ?? "postgres://byok:byok_dev@localhost:5432/byok";
+const DB_URL = process.env.DATABASE_URL ?? process.env.DATABASE_URL_TEST ?? "postgres://byok:byok_dev@localhost:5432/byok";
 
 describe("jobs(真 PG)", () => {
   const { db, sql } = createDb(DB_URL, { max: 2 });

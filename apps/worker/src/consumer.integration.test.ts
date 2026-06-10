@@ -7,12 +7,13 @@ const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379";
 
 describe("UsageConsumer(真 Redis)", () => {
   const redis = new Redis(REDIS_URL);
+  const stream = `t_${randomUUID().slice(0, 8)}`;
   afterAll(async () => {
+    await redis.del(stream, `${stream}_dlq`);
     await redis.quit();
   });
 
   it("失败→pending→claimStale 重试成功;超限→DLQ", async () => {
-    const stream = `t_${randomUUID().slice(0, 8)}`;
     let failures = 0;
     // maxDeliveries=2:第 1 次消费失败 + 第 1 次 claim 重试失败 → 第 2 次 claim 时投递数 3 > 2 → DLQ
     const flaky = new UsageConsumer(
@@ -48,7 +49,5 @@ describe("UsageConsumer(真 Redis)", () => {
     await ok.consumeOnce(0);
     const pending2 = (await redis.xpending(stream, "g")) as [number, ...unknown[]];
     expect(pending2[0]).toBe(0);
-
-    await redis.del(stream, `${stream}_dlq`);
   });
 });
