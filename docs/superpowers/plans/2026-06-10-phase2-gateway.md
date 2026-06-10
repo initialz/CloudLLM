@@ -1541,9 +1541,9 @@ export async function forwardWithFailover(opts: ForwardOptions): Promise<Forward
 
   for (const channel of opts.candidates) {
     const body: Record<string, unknown> = { ...opts.requestBody, model: channel.upstreamModelId };
-    if (opts.protocol === "openai" && isStream && body.stream_options === undefined) {
-      // 计量必需:让上游在最终 chunk 返回 usage;对调用方透明
-      body.stream_options = { include_usage: true };
+    if (opts.protocol === "openai" && isStream) {
+      // 计量必需:强制合并 include_usage(客户端自带 stream_options 也不能关掉,否则整条流零计费)
+      body.stream_options = { ...(body.stream_options as object | undefined), include_usage: true };
     }
 
     const credential = decryptSecret(channel.credentialEncrypted, opts.masterKey, channel.channelId);
