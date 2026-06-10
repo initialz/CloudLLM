@@ -119,4 +119,26 @@ describe.skipIf(!!process.env.CI)("processEvent(真 PG)", () => {
     const after = await db.select().from(budgets).where(eq(budgets.subjectId, keyId));
     expect(after[0]!.usedAmountCny).toBe(before[0]!.usedAmountCny);
   });
+
+  it("翻月未重置的 monthly 预算:校正按新周期视图写余额", async () => {
+    const bal = new FakeBalance();
+    const sid = randomUUID();
+    const k = generateApiKey();
+    const kr = await db.insert(apiKeys).values({
+      ownerType: "user", ownerId: sid, keyHash: k.keyHash, keyPrefix: k.keyPrefix,
+    }).returning({ id: apiKeys.id });
+    await db.insert(budgets).values({
+      subjectType: "key", subjectId: kr[0]!.id, period: "monthly",
+      limitAmountCny: "1", usedAmountCny: "1",
+      periodStart: new Date("2026-05-01T00:00:00Z"),
+    });
+    const { event, eventId } = mkEvent(kr[0]!.id, `e-${randomUUID()}`, {
+      costCny: "0.000000", status: "rejected",
+      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    });
+    await processEvent(db, bal.write, event, eventId, { auditRetentionDays: 30, balanceTtlSeconds: 60 });
+    const w = bal.writes.find((x) => x.key === `bal:key:${kr[0]!.id}`);
+    // 上月 used=1 不应再压住新月:余额应为完整 limit(1 元 = 1000000 micro)
+    expect(w!.value).toBe("1000000");
+  });
 });

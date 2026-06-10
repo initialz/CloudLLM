@@ -39,7 +39,7 @@ export async function processEvent(
   const key = keyRows[0];
   if (key) {
     subjects.push({ type: "key", id: event.keyId });
-    subjects.push({ type: key.ownerType as BudgetSubject["type"], id: key.ownerId });
+    subjects.push({ type: key.ownerType, id: key.ownerId });
     if (key.ownerType === "app" && key.teamId) {
       subjects.push({ type: "team", id: key.teamId });
     }
@@ -64,7 +64,7 @@ export async function processEvent(
         errorCode: event.errorCode,
         createdAt: new Date(event.ts),
       })
-      .onConflictDoNothing() // eventId unique 约束仍生效;不传 target 避免可空列类型问题
+      .onConflictDoNothing({ target: usageRecords.eventId })
       .returning({ id: usageRecords.id });
 
     const row = rec[0];
@@ -117,9 +117,16 @@ export async function processEvent(
   // PG 已提交,校正余额缓存(失败不影响账——下一事件或 TTL 过期会再校正)
   for (const subject of subjects) {
     try {
+      // 与 gateway DrizzleBudgetLoader 同口径——翻月未重置的 monthly 按新周期视图,防零成本事件把过期余额自续写回
       const rows = await db
         .select({
-          remaining: sql<string>`(${budgets.limitAmountCny} - ${budgets.usedAmountCny})::text`,
+          remaining: sql<string>`(${budgets.limitAmountCny} - CASE
+            WHEN ${budgets.period} = 'monthly'
+             AND ${budgets.periodStart} IS NOT NULL
+             AND date_trunc('month', ${budgets.periodStart}) < date_trunc('month', now())
+            THEN 0
+            ELSE ${budgets.usedAmountCny}
+          END)::text`,
         })
         .from(budgets)
         .where(and(
