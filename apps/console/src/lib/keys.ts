@@ -4,9 +4,9 @@ import { apiKeys, type Db } from "@byok/db";
 import { generateApiKey } from "@byok/shared";
 
 /**
- * DbOrTx: createApiKey/revokeApiKey が受け取る db の型。
- * Db (PostgresJsDatabase) も db.transaction コールバック内の tx (PgTransaction) も
- * どちらも PgDatabase を継承しているため、PgDatabase に広げることで両方対応できる。
+ * DbOrTx: createApiKey/revokeApiKey 接受的 db 类型。
+ * Db (PostgresJsDatabase) 与 db.transaction 回调中的 tx (PgTransaction)
+ * 均继承自 PgDatabase,因此扩展为 PgDatabase 可同时兼容两者。
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbOrTx = PgDatabase<any, any, any>;

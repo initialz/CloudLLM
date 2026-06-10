@@ -123,6 +123,8 @@ const res = await client.chat.completions.create({
 });
 console.log(res.choices[0].message.content);
 \`\`\`
+
+> Cursor 等支持自定义 OpenAI Base URL 的工具同样适用(填网关地址 \`${base}/v1\` + Key)。
 `);
   }
 

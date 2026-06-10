@@ -124,12 +124,21 @@ export async function requireUser(): Promise<SessionData> {
 }
 
 /**
- * 要求 admin 角色,否则 redirect /
+ * 要求 admin 角色,否则清 cookie 后 redirect /login。
+ * 注:/ 已是 admin 页,若直接 redirect("/") 旧 user 会话会死循环;
+ * 须先清 cookie 再落到 /login,避免 TOO_MANY_REDIRECTS。
  */
 export async function requireAdmin(): Promise<SessionData> {
   const session = await requireUser();
   if (session.role !== "admin") {
-    redirect("/");
+    // Server Component 环境下 cookie 写入会抛异常,吞掉后直接跳登录
+    try {
+      const cookieStore = await cookies();
+      cookieStore.delete(COOKIE_NAME);
+    } catch {
+      // Server Component 上下文中忽略此错误
+    }
+    redirect("/login");
   }
   return session;
 }
