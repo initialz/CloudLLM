@@ -191,4 +191,73 @@ describe("forwardWithFailover", () => {
     });
     expect(r).toMatchObject({ ok: false, code: "no_channel" });
   });
+
+  it("客户端中途取消流:usagePromise 仍以已解析的部分用量结算", async () => {
+    const r = await forwardWithFailover({
+      candidates: [chan("c1")], protocol: "anthropic",
+      requestBody: { model: "m", messages: [], stream: true },
+      masterKey: master, cooldown: new FakeCooldown(), cooldownSeconds: 30,
+      fetchImpl: async () =>
+        sseResponse([
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":25,"output_tokens":1}}}\n\n',
+          'data: {"type":"content_block_delta"}\n\n',
+        ]),
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const reader = (r.body as ReadableStream<Uint8Array>).getReader();
+    await reader.read();
+    await reader.cancel();
+    const usage = await r.usagePromise;
+    expect(usage.inputTokens).toBe(25);
+  });
+
+  it("凭证解密失败:冷却该渠道并切换下一个", async () => {
+    const bad: ChannelChoice = { ...chan("cbad"), credentialEncrypted: "not-json" };
+    const cooldown = new FakeCooldown();
+    const r = await forwardWithFailover({
+      candidates: [bad, chan("c2")], protocol: "openai",
+      requestBody: { model: "m", messages: [] },
+      masterKey: master, cooldown, cooldownSeconds: 30,
+      fetchImpl: async () => jsonResponse(200, { usage: { prompt_tokens: 1, completion_tokens: 1 } }),
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.channel.channelId).toBe("c2");
+    expect(cooldown.marked).toEqual(["cbad"]);
+  });
+
+  it("上游 401 按渠道故障处理:冷却并切换", async () => {
+    const cooldown = new FakeCooldown();
+    let calls = 0;
+    const r = await forwardWithFailover({
+      candidates: [chan("c1"), chan("c2")], protocol: "openai",
+      requestBody: { model: "m", messages: [] },
+      masterKey: master, cooldown, cooldownSeconds: 30,
+      fetchImpl: async () => {
+        calls++;
+        if (calls === 1) return jsonResponse(401, { error: { message: "invalid api key" } });
+        return jsonResponse(200, { usage: { prompt_tokens: 1, completion_tokens: 1 } });
+      },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.channel.channelId).toBe("c2");
+    expect(cooldown.marked).toEqual(["c1"]);
+  });
+
+  it("anthropic-beta 头透传", async () => {
+    let headers: Headers | null = null;
+    await forwardWithFailover({
+      candidates: [chan("c1")], protocol: "anthropic",
+      requestBody: { model: "m", messages: [], max_tokens: 8 },
+      masterKey: master, cooldown: new FakeCooldown(), cooldownSeconds: 30,
+      anthropicBeta: "prompt-caching-2024-07-31",
+      fetchImpl: async (_u, init) => {
+        headers = new Headers(init!.headers);
+        return jsonResponse(200, { usage: { input_tokens: 1, output_tokens: 1 } });
+      },
+    });
+    expect(headers!.get("anthropic-beta")).toBe("prompt-caching-2024-07-31");
+  });
 });

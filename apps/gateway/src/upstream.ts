@@ -32,11 +32,15 @@ export interface ForwardOptions {
   cooldownSeconds: number;
   /** 调用方传来的 anthropic-version 头(仅 anthropic 协议) */
   anthropicVersion?: string;
+  /** 调用方 anthropic-beta 头按白名单透传(仅 anthropic 协议) */
+  anthropicBeta?: string;
   fetchImpl?: typeof fetch;
 }
 
 const ZERO: UsageTotals = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
-const isRetryable = (status: number) => status === 408 || status === 429 || status >= 500;
+// 401/403 表示渠道凭证失效(调用方早已通过网关鉴权),按渠道故障处理——冷却+切换,而非把上游的鉴权错误透传给调用方
+const isRetryable = (status: number) =>
+  status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 
 export async function forwardWithFailover(opts: ForwardOptions): Promise<ForwardOk | ForwardErr> {
   const fetchFn = opts.fetchImpl ?? fetch;
@@ -54,13 +58,21 @@ export async function forwardWithFailover(opts: ForwardOptions): Promise<Forward
       body.stream_options = { ...(body.stream_options as object | undefined), include_usage: true };
     }
 
-    const credential = decryptSecret(channel.credentialEncrypted, opts.masterKey, channel.channelId);
+    let credential: string;
+    try {
+      credential = decryptSecret(channel.credentialEncrypted, opts.masterKey, channel.channelId);
+    } catch (err) {
+      console.error(`渠道 ${channel.channelId} 凭证解密失败(疑似主密钥轮换/数据损坏)`);
+      await opts.cooldown.markCooldown(channel.channelId, opts.cooldownSeconds);
+      continue;
+    }
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (opts.protocol === "openai") {
       headers.authorization = `Bearer ${credential}`;
     } else {
       headers["x-api-key"] = credential;
       headers["anthropic-version"] = opts.anthropicVersion ?? "2023-06-01";
+      if (opts.anthropicBeta) headers["anthropic-beta"] = opts.anthropicBeta;
     }
     const base = channel.baseUrl.replace(/\/$/, "");
     const url = opts.protocol === "openai" ? `${base}/chat/completions` : `${base}/messages`;
@@ -69,13 +81,15 @@ export async function forwardWithFailover(opts: ForwardOptions): Promise<Forward
     let res: Response;
     try {
       res = await fetchFn(url, { method: "POST", headers, body: JSON.stringify(body) });
-    } catch {
+    } catch (err) {
+      console.error(`渠道 ${channel.channelId} 请求失败: ${(err as Error)?.message}`);
       await opts.cooldown.markCooldown(channel.channelId, opts.cooldownSeconds);
       continue;
     }
 
     if (isRetryable(res.status)) {
       lastStatus = res.status;
+      void res.body?.cancel().catch(() => {});
       await opts.cooldown.markCooldown(channel.channelId, opts.cooldownSeconds);
       continue;
     }
@@ -107,17 +121,22 @@ export async function forwardWithFailover(opts: ForwardOptions): Promise<Forward
     const usagePromise = new Promise<UsageTotals>((resolve) => {
       resolveUsage = resolve;
     });
+    // flush=正常收尾;cancel=客户端断开/上游中断——两条路径都要用已解析的部分用量结算,
+    // 否则 usagePromise 永不 resolve,该请求零计费且无事件(代理最常见的异常结束方式)
+    const settle = () => {
+      tap.push(decoder.decode());
+      resolveUsage(tap.totals());
+    };
     const tapped = res.body!.pipeThrough(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
+        transform(chunk: Uint8Array, controller: TransformStreamDefaultController<Uint8Array>) {
           tap.push(decoder.decode(chunk, { stream: true }));
           controller.enqueue(chunk);
         },
-        flush() {
-          tap.push(decoder.decode());
-          resolveUsage(tap.totals());
-        },
-      }),
+        flush: settle,
+        cancel: settle,
+      } as any),
     );
     return {
       ok: true, channel, status: res.status, headers: res.headers, body: tapped,

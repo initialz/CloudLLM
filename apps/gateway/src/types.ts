@@ -50,6 +50,7 @@ export interface UsageEvent {
   usage: UsageTotals;
   costCny: string;
   latencyMs: number;
+  /** 到上游响应头的耗时(毫秒,严格说是 TTFB 而非首 token) */
   ttftMs: number | null;
   status: "ok" | "upstream_error" | "rejected";
   errorCode: string | null;
