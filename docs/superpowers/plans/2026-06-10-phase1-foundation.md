@@ -125,7 +125,7 @@ git commit -m "chore: pnpm monorepo 脚手架与本地开发依赖"
 - Create: `packages/shared/src/api-key.ts`
 - Test: `packages/shared/src/api-key.test.ts`
 
-**规则(来自 spec §4.3):** Key 格式 `sk-wtg-{random}`;库中只存 SHA-256 十六进制哈希;`keyPrefix` 取完整 Key 前 11 个字符(`sk-wtg-` + 随机段前 4 位)用于后台识别;明文仅创建时返回一次。
+**规则(来自 spec §4.3):** Key 格式 `sk-wtg-{random}`;库中只存 SHA-256 十六进制哈希;`keyPrefix` 取完整 Key 前 15 个字符(`sk-wtg-` + 随机段前 8 位)用于后台识别;明文仅创建时返回一次。
 
 - [ ] **Step 1: 包脚手架**
 
@@ -189,7 +189,7 @@ describe("generateApiKey", () => {
   it("生成 sk-wtg- 前缀的 Key,并返回哈希与前缀", () => {
     const k = generateApiKey();
     expect(k.plaintext).toMatch(/^sk-wtg-[A-Za-z0-9_-]{32}$/);
-    expect(k.keyPrefix).toBe(k.plaintext.slice(0, 11));
+    expect(k.keyPrefix).toBe(k.plaintext.slice(0, 15));
     expect(k.keyHash).toBe(hashApiKey(k.plaintext));
   });
 
@@ -225,7 +225,7 @@ export interface GeneratedApiKey {
   plaintext: string;
   /** SHA-256 hex,入库字段 */
   keyHash: string;
-  /** 前 11 字符,后台识别用 */
+  /** 前 15 字符,后台识别用 */
   keyPrefix: string;
 }
 
@@ -235,7 +235,7 @@ export function generateApiKey(): GeneratedApiKey {
   return {
     plaintext,
     keyHash: hashApiKey(plaintext),
-    keyPrefix: plaintext.slice(0, 11),
+    keyPrefix: plaintext.slice(0, 15),
   };
 }
 
