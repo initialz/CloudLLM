@@ -92,8 +92,9 @@ describe("keys", () => {
     expect(before[0]!.status).toBe("active");
     const updatedAtBefore = before[0]!.updatedAt;
 
-    // 等待 1ms 确保时间戳会不同(某些情况下同一毫秒内 $onUpdate 不会变)
-    await new Promise((r) => setTimeout(r, 5));
+    // 等待确保时间戳必然不同(insert 的 defaultNow 是 PG 时钟,$onUpdate 是应用时钟,
+    // 两个时钟域可能有毫秒级偏差——因此下方只断言"值变化",不断言先后顺序)
+    await new Promise((r) => setTimeout(r, 20));
 
     // 撤销
     const revoked = await revokeApiKey(db, result.id, null);
@@ -105,10 +106,9 @@ describe("keys", () => {
       .from(apiKeys)
       .where(eq(apiKeys.id, result.id));
     expect(after[0]!.status).toBe("revoked");
-    // updatedAt 应该发生变化(大于等于之前)
-    expect(after[0]!.updatedAt.getTime()).toBeGreaterThanOrEqual(
-      updatedAtBefore.getTime(),
-    );
+    // updatedAt 应该发生变化($onUpdate 用应用时钟重写了 PG defaultNow 的初值;
+    // 跨时钟域不能比较先后,只断言不相等)
+    expect(after[0]!.updatedAt.getTime()).not.toBe(updatedAtBefore.getTime());
   });
 
   it("ownerGuard 防他人:非 owner 的 revoke 返回 false", async () => {
