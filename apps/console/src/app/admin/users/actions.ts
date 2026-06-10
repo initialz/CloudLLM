@@ -60,9 +60,14 @@ export async function createUserAction(formData: FormData): Promise<CreateUserRe
 /** 停用/启用用户(admin only;不可停用自己) */
 export async function toggleUserStatusAction(
   targetUserId: string,
-  newStatus: "active" | "disabled",
+  newStatus: string,
 ): Promise<UpdateUserResult> {
   const session = await requireAdmin();
+
+  // 枚举白名单校验
+  if (!["active", "disabled"].includes(newStatus)) {
+    return { error: "无效状态" };
+  }
 
   // 不可停用自己
   if (newStatus === "disabled" && targetUserId === session.userId) {
@@ -72,7 +77,7 @@ export async function toggleUserStatusAction(
   try {
     await db
       .update(users)
-      .set({ status: newStatus })
+      .set({ status: newStatus as "active" | "disabled" })
       .where(eq(users.id, targetUserId));
     revalidatePath("/admin/users");
     return { success: true };
@@ -85,9 +90,14 @@ export async function toggleUserStatusAction(
 /** 修改用户角色(admin only;不可降级自己) */
 export async function changeUserRoleAction(
   targetUserId: string,
-  newRole: "admin" | "user",
+  newRole: string,
 ): Promise<UpdateUserResult> {
   const session = await requireAdmin();
+
+  // 枚举白名单校验
+  if (!["admin", "user"].includes(newRole)) {
+    return { error: "无效角色" };
+  }
 
   // 不可降级自己
   if (targetUserId === session.userId && newRole === "user") {
@@ -97,7 +107,7 @@ export async function changeUserRoleAction(
   try {
     await db
       .update(users)
-      .set({ role: newRole })
+      .set({ role: newRole as "admin" | "user" })
       .where(eq(users.id, targetUserId));
     revalidatePath("/admin/users");
     return { success: true };

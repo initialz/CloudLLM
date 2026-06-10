@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { apps, teamMembers, teams, users } from "@byok/db";
 import { requireUser } from "../../lib/auth";
@@ -29,12 +29,47 @@ export async function createTeamAction(formData: FormData): Promise<TeamActionRe
       .insert(teams)
       .values({ name, status: "active" })
       .returning({ id: teams.id });
+    const teamId = rows[0]!.id;
+
+    // 创建者自动成为 owner,消除 owner-less 常态
+    await db.insert(teamMembers).values({
+      teamId,
+      userId: session.userId,
+      role: "owner",
+    });
+
     revalidatePath("/teams");
-    return { success: true, teamId: rows[0]!.id };
+    return { success: true, teamId };
   } catch (err) {
     console.error("createTeamAction error:", err);
     return { error: "创建失败,请重试" };
   }
+}
+
+/**
+ * 查询某团队的 owner 数量
+ */
+async function countTeamOwners(teamId: string): Promise<number> {
+  const rows = await db
+    .select({ cnt: count() })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.role, "owner")));
+  return Number(rows[0]!.cnt);
+}
+
+/**
+ * 查询某用户在某团队的当前角色,不存在返回 null
+ */
+async function getTeamMemberRole(
+  teamId: string,
+  userId: string,
+): Promise<"owner" | "admin" | "member" | null> {
+  const rows = await db
+    .select({ role: teamMembers.role })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
+    .limit(1);
+  return rows.length > 0 ? (rows[0]!.role as "owner" | "admin" | "member") : null;
 }
 
 /** 判断当前操作者是否是某团队的 owner/admin 或系统 admin */
@@ -89,6 +124,14 @@ export async function addTeamMemberAction(
       .limit(1);
 
     if (existing.length > 0) {
+      // 最后一个 owner 防护:若当前是 owner 且将被降级,且 owner 数=1,则拒绝
+      const currentRole = await getTeamMemberRole(teamId, targetUserId);
+      if (currentRole === "owner" && role !== "owner") {
+        const ownerCount = await countTeamOwners(teamId);
+        if (ownerCount <= 1) {
+          return { error: "团队至少保留一名 owner" };
+        }
+      }
       await db
         .update(teamMembers)
         .set({ role: role as "owner" | "admin" | "member" })
@@ -114,18 +157,32 @@ export async function addTeamMemberAction(
 export async function changeTeamMemberRoleAction(
   teamId: string,
   targetUserId: string,
-  newRole: "owner" | "admin" | "member",
+  newRole: string,
 ): Promise<TeamActionResult> {
   const session = await requireUser();
+
+  // 枚举白名单校验
+  if (!["owner", "admin", "member"].includes(newRole)) {
+    return { error: "无效角色" };
+  }
 
   if (!(await canManageTeam(session.userId, session.role === "admin", teamId))) {
     return { error: "无权限:需要团队 owner/admin 或系统管理员" };
   }
 
+  // 最后一个 owner 防护:若当前是 owner 且将被降级,且 owner 数=1,则拒绝
+  const currentRole = await getTeamMemberRole(teamId, targetUserId);
+  if (currentRole === "owner" && newRole !== "owner") {
+    const ownerCount = await countTeamOwners(teamId);
+    if (ownerCount <= 1) {
+      return { error: "团队至少保留一名 owner" };
+    }
+  }
+
   try {
     await db
       .update(teamMembers)
-      .set({ role: newRole })
+      .set({ role: newRole as "owner" | "admin" | "member" })
       .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, targetUserId)));
     revalidatePath(`/teams/${teamId}`);
     return { success: true };
@@ -144,6 +201,15 @@ export async function removeTeamMemberAction(
 
   if (!(await canManageTeam(session.userId, session.role === "admin", teamId))) {
     return { error: "无权限:需要团队 owner/admin 或系统管理员" };
+  }
+
+  // 最后一个 owner 防护:若目标是 owner 且 owner 数=1,则拒绝移除
+  const currentRole = await getTeamMemberRole(teamId, targetUserId);
+  if (currentRole === "owner") {
+    const ownerCount = await countTeamOwners(teamId);
+    if (ownerCount <= 1) {
+      return { error: "团队至少保留一名 owner" };
+    }
   }
 
   try {

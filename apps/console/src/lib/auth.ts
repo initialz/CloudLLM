@@ -76,6 +76,10 @@ export async function logout(): Promise<void> {
 /**
  * 读取并校验会话,无效则 redirect /login
  * 在 Server Components / Server Actions 中使用
+ *
+ * 无状态 cookie 的撤销补偿:decodeSession 成功后回查 users 表(by id),
+ * status !== "active" 则清 cookie 并 redirect("/login")。
+ * console 流量小,每请求一次 PK 查询可接受。
  */
 export async function requireUser(): Promise<SessionData> {
   const cookieStore = await cookies();
@@ -84,6 +88,25 @@ export async function requireUser(): Promise<SessionData> {
   if (!session) {
     redirect("/login");
   }
+
+  // 回查用户状态:停用用户会话立即失效
+  const rows = await db
+    .select({ status: users.status })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+  if (rows.length === 0 || rows[0]!.status !== "active") {
+    // 尝试清 cookie(仅 Server Action / Route Handler 可写 cookie,
+    // Server Component 中会抛出异常;此处吞掉异常,直接 redirect 即可——
+    // 下次请求 DB 查询仍会失效,逻辑不受影响)
+    try {
+      cookieStore.delete(COOKIE_NAME);
+    } catch {
+      // Server Component 上下文中忽略此错误
+    }
+    redirect("/login");
+  }
+
   return session;
 }
 

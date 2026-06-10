@@ -112,22 +112,40 @@ export async function updateBudgetAction(
 ): Promise<BudgetActionResult> {
   await requireAdmin();
 
-  const limitRaw = (formData.get("limit") as string | null) ?? "";
-  const alertThresholdRaw = formData.get("alertThreshold") as string | null;
+  const patch: {
+    limitAmountCny?: string;
+    alertThreshold?: string | null;
+  } = {};
 
-  const limitResult = validateLimit(limitRaw);
-  if (limitResult.error) return { error: limitResult.error };
+  // limit:字段缺失=不更新;字段存在=必须合法正数
+  const limitRaw = formData.get("limit") as string | null;
+  if (limitRaw !== null) {
+    const limitResult = validateLimit(limitRaw);
+    if (limitResult.error) return { error: limitResult.error };
+    patch.limitAmountCny = limitResult.value!;
+  }
 
-  const thresholdResult = validateAlertThreshold(alertThresholdRaw);
-  if (thresholdResult.error) return { error: thresholdResult.error };
+  // alertThreshold:字段缺失=不更新;显式空串=清空(set null);有值=校验
+  if (formData.has("alertThreshold")) {
+    const alertThresholdRaw = formData.get("alertThreshold") as string | null;
+    if (alertThresholdRaw === null || alertThresholdRaw.trim() === "") {
+      // 显式清空
+      patch.alertThreshold = null;
+    } else {
+      const thresholdResult = validateAlertThreshold(alertThresholdRaw);
+      if (thresholdResult.error) return { error: thresholdResult.error };
+      patch.alertThreshold = thresholdResult.value ?? null;
+    }
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { error: "没有需要更新的字段" };
+  }
 
   try {
     await db
       .update(budgets)
-      .set({
-        limitAmountCny: limitResult.value!,
-        alertThreshold: thresholdResult.value ?? undefined,
-      })
+      .set(patch)
       .where(eq(budgets.id, budgetId));
     revalidatePath("/admin/budgets");
     return { success: true };

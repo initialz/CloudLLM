@@ -24,6 +24,9 @@ interface KeysClientProps {
   userList: { id: string; email: string }[];
   teamList: { id: string; name: string }[];
   appList: { id: string; name: string; teamId: string }[];
+  /** Admin 预筛初始态(来自 URL searchParams) */
+  initialFilterOwnerType?: "user" | "team" | "app";
+  initialFilterOwnerId?: string;
 }
 
 export default function KeysClient({
@@ -34,6 +37,8 @@ export default function KeysClient({
   userList,
   teamList,
   appList,
+  initialFilterOwnerType,
+  initialFilterOwnerId,
 }: KeysClientProps) {
   const [keys, setKeys] = useState<ApiKey[]>(initialKeys);
   const [showForm, setShowForm] = useState(false);
@@ -42,8 +47,10 @@ export default function KeysClient({
   const [isPending, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
 
-  // Admin owner type selector
-  const [ownerType, setOwnerType] = useState<"user" | "team" | "app">("user");
+  // Admin owner type selector;初始态来自 URL 预筛参数
+  const [ownerType, setOwnerType] = useState<"user" | "team" | "app">(
+    initialFilterOwnerType ?? "user",
+  );
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -191,6 +198,7 @@ export default function KeysClient({
                   </label>
                   <select
                     name="ownerId"
+                    defaultValue={initialFilterOwnerId ?? ""}
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {getOwnerOptions().map((o) => (
