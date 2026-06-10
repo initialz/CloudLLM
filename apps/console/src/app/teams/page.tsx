@@ -1,41 +1,21 @@
-import { eq } from "drizzle-orm";
-import Link from "next/link";
-import { teamMembers, teams } from "@byok/db";
-import { requireUser } from "../../lib/auth";
+import { teams } from "@byok/db";
+import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 import TeamsClient from "./teams-client";
 
 export default async function TeamsPage() {
-  const session = await requireUser();
-  const isAdmin = session.role === "admin";
+  await requireAdmin();
 
-  let teamList: { id: string; name: string; status: string; createdAt: Date }[];
+  // v1.1: 管理员查看所有团队(team_members 不再使用)
+  const teamList = await db
+    .select({
+      id: teams.id,
+      name: teams.name,
+      status: teams.status,
+      createdAt: teams.createdAt,
+    })
+    .from(teams)
+    .orderBy(teams.createdAt);
 
-  if (isAdmin) {
-    // Admin sees all teams
-    teamList = await db
-      .select({
-        id: teams.id,
-        name: teams.name,
-        status: teams.status,
-        createdAt: teams.createdAt,
-      })
-      .from(teams)
-      .orderBy(teams.createdAt);
-  } else {
-    // Regular user: only teams they belong to
-    teamList = await db
-      .select({
-        id: teams.id,
-        name: teams.name,
-        status: teams.status,
-        createdAt: teams.createdAt,
-      })
-      .from(teams)
-      .innerJoin(teamMembers, eq(teamMembers.teamId, teams.id))
-      .where(eq(teamMembers.userId, session.userId))
-      .orderBy(teams.createdAt);
-  }
-
-  return <TeamsClient teams={teamList} isAdmin={isAdmin} />;
+  return <TeamsClient teams={teamList} />;
 }

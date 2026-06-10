@@ -3,7 +3,7 @@
 import { and, count, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { apps, teamMembers, teams, users } from "@byok/db";
-import { requireUser } from "../../lib/auth";
+import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 
 export interface TeamActionResult {
@@ -14,10 +14,7 @@ export interface TeamActionResult {
 
 /** 创建团队(admin only) */
 export async function createTeamAction(formData: FormData): Promise<TeamActionResult> {
-  const session = await requireUser();
-  if (session.role !== "admin") {
-    return { error: "无权限:仅管理员可创建团队" };
-  }
+  const session = await requireAdmin();
 
   const name = (formData.get("name") as string | null)?.trim() ?? "";
   if (!name) {
@@ -31,7 +28,8 @@ export async function createTeamAction(formData: FormData): Promise<TeamActionRe
       .returning({ id: teams.id });
     const teamId = rows[0]!.id;
 
-    // 创建者自动成为 owner,消除 owner-less 常态
+    // 创建者自动成为 owner(team_members 表 v1.1 虽不再用于成员管理,
+    // 但保留此插入以维持数据完整性,无害)
     await db.insert(teamMembers).values({
       teamId,
       userId: session.userId,
@@ -45,6 +43,11 @@ export async function createTeamAction(formData: FormData): Promise<TeamActionRe
     return { error: "创建失败,请重试" };
   }
 }
+
+/**
+ * 以下 actions 在 v1.1 中 UI 层已移除对应区块(隐藏而非删除),
+ * 路由仍通过 requireAdmin 保护,未来恢复零成本。
+ */
 
 /**
  * 查询某团队的 owner 数量
@@ -72,28 +75,12 @@ async function getTeamMemberRole(
   return rows.length > 0 ? (rows[0]!.role as "owner" | "admin" | "member") : null;
 }
 
-/** 判断当前操作者是否是某团队的 owner/admin 或系统 admin */
-async function canManageTeam(userId: string, isAdmin: boolean, teamId: string): Promise<boolean> {
-  if (isAdmin) return true;
-  const rows = await db
-    .select({ role: teamMembers.role })
-    .from(teamMembers)
-    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
-    .limit(1);
-  if (rows.length === 0) return false;
-  return rows[0]!.role === "owner" || rows[0]!.role === "admin";
-}
-
-/** 向团队添加成员(by email) */
+/** 向团队添加成员(by email) — v1.1 UI 已隐藏 */
 export async function addTeamMemberAction(
   teamId: string,
   formData: FormData,
 ): Promise<TeamActionResult> {
-  const session = await requireUser();
-
-  if (!(await canManageTeam(session.userId, session.role === "admin", teamId))) {
-    return { error: "无权限:需要团队 owner/admin 或系统管理员" };
-  }
+  const session = await requireAdmin();
 
   const email = (formData.get("email") as string | null)?.trim().toLowerCase() ?? "";
   const role = (formData.get("role") as string | null) ?? "member";
@@ -116,7 +103,6 @@ export async function addTeamMemberAction(
   const targetUserId = userRows[0]!.id;
 
   try {
-    // UPSERT: 已存在则更新角色
     const existing = await db
       .select({ userId: teamMembers.userId })
       .from(teamMembers)
@@ -124,7 +110,6 @@ export async function addTeamMemberAction(
       .limit(1);
 
     if (existing.length > 0) {
-      // 最后一个 owner 防护:若当前是 owner 且将被降级,且 owner 数=1,则拒绝
       const currentRole = await getTeamMemberRole(teamId, targetUserId);
       if (currentRole === "owner" && role !== "owner") {
         const ownerCount = await countTeamOwners(teamId);
@@ -153,24 +138,18 @@ export async function addTeamMemberAction(
   }
 }
 
-/** 修改成员角色 */
+/** 修改成员角色 — v1.1 UI 已隐藏 */
 export async function changeTeamMemberRoleAction(
   teamId: string,
   targetUserId: string,
   newRole: string,
 ): Promise<TeamActionResult> {
-  const session = await requireUser();
+  const session = await requireAdmin();
 
-  // 枚举白名单校验
   if (!["owner", "admin", "member"].includes(newRole)) {
     return { error: "无效角色" };
   }
 
-  if (!(await canManageTeam(session.userId, session.role === "admin", teamId))) {
-    return { error: "无权限:需要团队 owner/admin 或系统管理员" };
-  }
-
-  // 最后一个 owner 防护:若当前是 owner 且将被降级,且 owner 数=1,则拒绝
   const currentRole = await getTeamMemberRole(teamId, targetUserId);
   if (currentRole === "owner" && newRole !== "owner") {
     const ownerCount = await countTeamOwners(teamId);
@@ -192,18 +171,13 @@ export async function changeTeamMemberRoleAction(
   }
 }
 
-/** 移除成员 */
+/** 移除成员 — v1.1 UI 已隐藏 */
 export async function removeTeamMemberAction(
   teamId: string,
   targetUserId: string,
 ): Promise<TeamActionResult> {
-  const session = await requireUser();
+  const session = await requireAdmin();
 
-  if (!(await canManageTeam(session.userId, session.role === "admin", teamId))) {
-    return { error: "无权限:需要团队 owner/admin 或系统管理员" };
-  }
-
-  // 最后一个 owner 防护:若目标是 owner 且 owner 数=1,则拒绝移除
   const currentRole = await getTeamMemberRole(teamId, targetUserId);
   if (currentRole === "owner") {
     const ownerCount = await countTeamOwners(teamId);
@@ -224,16 +198,12 @@ export async function removeTeamMemberAction(
   }
 }
 
-/** 创建团队应用 */
+/** 创建团队应用 — v1.1 UI 已隐藏 */
 export async function createTeamAppAction(
   teamId: string,
   formData: FormData,
 ): Promise<TeamActionResult> {
-  const session = await requireUser();
-
-  if (!(await canManageTeam(session.userId, session.role === "admin", teamId))) {
-    return { error: "无权限:需要团队 owner/admin 或系统管理员" };
-  }
+  const session = await requireAdmin();
 
   const name = (formData.get("name") as string | null)?.trim() ?? "";
   const env = (formData.get("env") as string | null) ?? "prod";
@@ -258,16 +228,12 @@ export async function createTeamAppAction(
   }
 }
 
-/** 停用应用 */
+/** 停用应用 — v1.1 UI 已隐藏 */
 export async function disableTeamAppAction(
   teamId: string,
   appId: string,
 ): Promise<TeamActionResult> {
-  const session = await requireUser();
-
-  if (!(await canManageTeam(session.userId, session.role === "admin", teamId))) {
-    return { error: "无权限:需要团队 owner/admin 或系统管理员" };
-  }
+  const session = await requireAdmin();
 
   try {
     await db

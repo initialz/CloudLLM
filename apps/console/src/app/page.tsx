@@ -1,18 +1,19 @@
-import { requireUser } from "../lib/auth";
+import { requireAdmin } from "../lib/auth";
 import { db } from "../lib/db";
 import { aggregateUsage, visibleKeyIds } from "../lib/reports";
 
 /** 概览页:本月总成本、请求数、Top5 模型 */
 export default async function HomePage() {
-  const session = await requireUser();
+  // 概览页仅管理员可访问(v1.1)
+  const session = await requireAdmin();
 
   // 本月起始时间(UTC)
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
-  // 普通用户限自己 Key,admin 不限
-  const keyIds = await visibleKeyIds(db, session.userId, session.role === "admin");
+  // Admin 不限 Key 范围(visibleKeyIds 返回 null=全部)
+  const keyIds = await visibleKeyIds(db, session.userId, true);
 
   // 按模型聚合(用于 Top5 模型)
   const modelRows = await aggregateUsage(

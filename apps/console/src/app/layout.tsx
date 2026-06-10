@@ -71,28 +71,18 @@ export default async function RootLayout({
               <span className="font-bold text-lg text-blue-600">BYOK</span>
             </div>
 
+            {/* v1.1: 统一管理员导航——所有入口对管理员可见 */}
             <nav className="flex-1 p-3 space-y-1">
-              {/* 所有用户可见 */}
               <NavLink href="/">概览</NavLink>
-              <NavLink href="/keys">我的 Key</NavLink>
+              <NavLink href="/keys">Key 管理</NavLink>
+              <NavLink href="/teams">团队</NavLink>
+              <NavLink href="/admin/budgets">预算</NavLink>
+              <NavLink href="/admin/channels">渠道</NavLink>
+              <NavLink href="/admin/models">模型</NavLink>
               <NavLink href="/usage">用量报表</NavLink>
-
-              {/* 仅 admin 可见 */}
-              {session.role === "admin" && (
-                <>
-                  <div className="pt-3 pb-1">
-                    <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                      管理
-                    </p>
-                  </div>
-                  <NavLink href="/admin/users">用户</NavLink>
-                  <NavLink href="/teams">团队</NavLink>
-                  <NavLink href="/admin/budgets">预算</NavLink>
-                  <NavLink href="/admin/channels">渠道</NavLink>
-                  <NavLink href="/admin/models">模型</NavLink>
-                  <NavLink href="/admin/audit">审计</NavLink>
-                </>
-              )}
+              <NavLink href="/admin/audit">审计</NavLink>
+              <NavLink href="/admin/users">管理员账号</NavLink>
+              <NavLink href="/guide">接入说明</NavLink>
             </nav>
           </aside>
 

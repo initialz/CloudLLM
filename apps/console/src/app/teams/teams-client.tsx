@@ -13,10 +13,9 @@ interface Team {
 
 interface TeamsClientProps {
   teams: Team[];
-  isAdmin: boolean;
 }
 
-export default function TeamsClient({ teams: initialTeams, isAdmin }: TeamsClientProps) {
+export default function TeamsClient({ teams: initialTeams }: TeamsClientProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createError, setCreateError] = useState("");
@@ -40,14 +39,12 @@ export default function TeamsClient({ teams: initialTeams, isAdmin }: TeamsClien
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold">团队管理</h1>
-        {isAdmin && (
-          <button
-            onClick={() => { setShowCreate(!showCreate); setCreateError(""); }}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700"
-          >
-            + 新建团队
-          </button>
-        )}
+        <button
+          onClick={() => { setShowCreate(!showCreate); setCreateError(""); }}
+          className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700"
+        >
+          + 新建团队
+        </button>
       </div>
 
       {showCreate && (
@@ -124,7 +121,7 @@ export default function TeamsClient({ teams: initialTeams, isAdmin }: TeamsClien
             {initialTeams.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                  {isAdmin ? "暂无团队" : "你还未加入任何团队"}
+                  暂无团队
                 </td>
               </tr>
             )}

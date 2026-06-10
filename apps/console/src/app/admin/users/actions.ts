@@ -43,10 +43,11 @@ export async function createUserAction(formData: FormData): Promise<CreateUserRe
 
   try {
     const passwordHash = await hashPassword(password);
+    // v1.1: Console 账号即管理员账号,role 固定 admin
     await db.insert(users).values({
       email,
       passwordHash,
-      role: "user",
+      role: "admin",
       status: "active",
     });
     revalidatePath("/admin/users");

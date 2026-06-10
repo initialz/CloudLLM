@@ -193,6 +193,29 @@ describe("reports", () => {
     expect(rows).toEqual([]);
   });
 
+  it("按 key 聚合:bucket 含 keyPrefix 与名称", async () => {
+    const from = new Date(Date.now() - 60 * 60 * 1000);
+    const to = new Date(Date.now() + 60 * 60 * 1000);
+
+    const rows = await aggregateUsage(
+      db,
+      { from, to, keyIds: [key1Id, key2Id] },
+      "key",
+    );
+
+    // key1: keyPrefix="bk_test_rpt1__", name="report-test-key-1"
+    const key1Row = rows.find((r) => r.bucket.includes("bk_test_rpt1__"));
+    expect(key1Row).toBeDefined();
+    expect(key1Row!.bucket).toContain("report-test-key-1");
+    expect(key1Row!.requests).toBe(2);
+
+    // key2: keyPrefix="bk_test_rpt2__", name="report-test-key-2"
+    const key2Row = rows.find((r) => r.bucket.includes("bk_test_rpt2__"));
+    expect(key2Row).toBeDefined();
+    expect(key2Row!.bucket).toContain("report-test-key-2");
+    expect(key2Row!.requests).toBe(2);
+  });
+
   it("按 day 聚合:bucket 为 YYYY-MM-DD 且计数正确", async () => {
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);

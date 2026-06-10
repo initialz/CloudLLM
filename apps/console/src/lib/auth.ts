@@ -42,10 +42,16 @@ export async function verifyCredentials(email: string, password: string) {
 /**
  * 登录:验证凭证后写 cookie
  * 失败返回错误字符串(不区分"用户不存在/密码错",防止用户枚举)
+ * v1.1:仅管理员可登录控制台,非 admin 角色直接拒绝
  */
 export async function login(email: string, password: string): Promise<string | null> {
   const user = await verifyCredentials(email, password);
   if (!user) return "邮箱或密码错误";
+
+  // 仅管理员可登录控制台
+  if (user.role !== "admin") {
+    return "仅管理员可登录控制台";
+  }
 
   const nowSec = Math.floor(Date.now() / 1000);
   const sessionData: SessionData = {
@@ -118,12 +124,21 @@ export async function requireUser(): Promise<SessionData> {
 }
 
 /**
- * 要求 admin 角色,否则 redirect /
+ * 要求 admin 角色,否则清 cookie 后 redirect /login。
+ * 注:/ 已是 admin 页,若直接 redirect("/") 旧 user 会话会死循环;
+ * 须先清 cookie 再落到 /login,避免 TOO_MANY_REDIRECTS。
  */
 export async function requireAdmin(): Promise<SessionData> {
   const session = await requireUser();
   if (session.role !== "admin") {
-    redirect("/");
+    // Server Component 环境下 cookie 写入会抛异常,吞掉后直接跳登录
+    try {
+      const cookieStore = await cookies();
+      cookieStore.delete(COOKIE_NAME);
+    } catch {
+      // Server Component 上下文中忽略此错误
+    }
+    redirect("/login");
   }
   return session;
 }

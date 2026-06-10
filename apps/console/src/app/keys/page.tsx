@@ -1,24 +1,27 @@
 import { and, eq } from "drizzle-orm";
-import { apiKeys, models, users, teams, apps } from "@byok/db";
-import { requireUser } from "../../lib/auth";
+import { apiKeys, models, users, teams } from "@byok/db";
+import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 import KeysClient from "./keys-client";
+
+// 网关对外地址,由 server 端读 env 透传给客户端
+const GATEWAY_PUBLIC_URL = process.env.GATEWAY_PUBLIC_URL ?? "";
 
 interface KeysPageProps {
   searchParams: Promise<{ ownerType?: string; ownerId?: string }>;
 }
 
 export default async function KeysPage({ searchParams }: KeysPageProps) {
-  const session = await requireUser();
-  const isAdmin = session.role === "admin";
+  // Key 管理仅管理员可访问(v1.1)
+  const session = await requireAdmin();
 
-  // Admin 可通过 searchParams 预筛:ownerType / ownerId
+  // 通过 searchParams 预筛:ownerType / ownerId(v1.1: app 选项已移除,仅 user/team)
   const params = await searchParams;
   const filterOwnerType =
-    isAdmin && params.ownerType && ["user", "team", "app"].includes(params.ownerType)
-      ? (params.ownerType as "user" | "team" | "app")
+    params.ownerType && ["user", "team"].includes(params.ownerType)
+      ? (params.ownerType as "user" | "team")
       : undefined;
-  const filterOwnerId = isAdmin && params.ownerId ? params.ownerId : undefined;
+  const filterOwnerId = params.ownerId ? params.ownerId : undefined;
 
   // 查询可见 key 列表
   const selectColumns = {
@@ -34,33 +37,19 @@ export default async function KeysPage({ searchParams }: KeysPageProps) {
     createdAt: apiKeys.createdAt,
   };
 
-  let keyRows;
-  if (isAdmin) {
-    // Admin: 全量或按 ownerType/ownerId 预筛
-    const conditions = [];
-    if (filterOwnerType) conditions.push(eq(apiKeys.ownerType, filterOwnerType));
-    if (filterOwnerId) conditions.push(eq(apiKeys.ownerId, filterOwnerId));
+  // 全量或按 ownerType/ownerId 预筛
+  const conditions = [];
+  if (filterOwnerType) conditions.push(eq(apiKeys.ownerType, filterOwnerType));
+  if (filterOwnerId) conditions.push(eq(apiKeys.ownerId, filterOwnerId));
 
-    keyRows =
-      conditions.length > 0
-        ? await db
-            .select(selectColumns)
-            .from(apiKeys)
-            .where(and(...conditions))
-            .orderBy(apiKeys.createdAt)
-        : await db.select(selectColumns).from(apiKeys).orderBy(apiKeys.createdAt);
-  } else {
-    keyRows = await db
-      .select(selectColumns)
-      .from(apiKeys)
-      .where(
-        and(
-          eq(apiKeys.ownerType, "user"),
-          eq(apiKeys.ownerId, session.userId),
-        ),
-      )
-      .orderBy(apiKeys.createdAt);
-  }
+  const keyRows =
+    conditions.length > 0
+      ? await db
+          .select(selectColumns)
+          .from(apiKeys)
+          .where(and(...conditions))
+          .orderBy(apiKeys.createdAt)
+      : await db.select(selectColumns).from(apiKeys).orderBy(apiKeys.createdAt);
 
   // 查询 active 模型 slug
   const modelRows = await db
@@ -69,37 +58,26 @@ export default async function KeysPage({ searchParams }: KeysPageProps) {
     .where(eq(models.status, "active"));
   const modelSlugs = modelRows.map((r) => r.slug);
 
-  // Admin 需要各实体列表供下拉
-  let userList: { id: string; email: string }[] = [];
-  let teamList: { id: string; name: string }[] = [];
-  let appList: { id: string; name: string; teamId: string }[] = [];
-
-  if (isAdmin) {
-    userList = await db
-      .select({ id: users.id, email: users.email })
-      .from(users)
-      .where(eq(users.status, "active"));
-    teamList = await db
-      .select({ id: teams.id, name: teams.name })
-      .from(teams)
-      .where(eq(teams.status, "active"));
-    appList = await db
-      .select({ id: apps.id, name: apps.name, teamId: apps.teamId })
-      .from(apps)
-      .where(eq(apps.status, "active"));
-  }
+  // 归属实体列表:仅 user/team(v1.1 移除 app)
+  const userList = await db
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(eq(users.status, "active"));
+  const teamList = await db
+    .select({ id: teams.id, name: teams.name })
+    .from(teams)
+    .where(eq(teams.status, "active"));
 
   return (
     <KeysClient
       initialKeys={keyRows}
       modelSlugs={modelSlugs}
-      isAdmin={isAdmin}
       currentUserId={session.userId}
       userList={userList}
       teamList={teamList}
-      appList={appList}
       initialFilterOwnerType={filterOwnerType}
       initialFilterOwnerId={filterOwnerId}
+      gatewayUrl={GATEWAY_PUBLIC_URL}
     />
   );
 }

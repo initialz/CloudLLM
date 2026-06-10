@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createKeyAction, revokeKeyAction, toggleAuditAction } from "./actions";
+import { buildHandout } from "../../lib/handout";
 
 interface ApiKey {
   id: string;
@@ -19,43 +20,46 @@ interface ApiKey {
 interface KeysClientProps {
   initialKeys: ApiKey[];
   modelSlugs: string[];
-  isAdmin: boolean;
   currentUserId: string;
   userList: { id: string; email: string }[];
   teamList: { id: string; name: string }[];
-  appList: { id: string; name: string; teamId: string }[];
   /** Admin 预筛初始态(来自 URL searchParams) */
-  initialFilterOwnerType?: "user" | "team" | "app";
+  initialFilterOwnerType?: "user" | "team";
   initialFilterOwnerId?: string;
+  /** 网关对外地址,server 端读 GATEWAY_PUBLIC_URL 传入 */
+  gatewayUrl?: string;
 }
 
 export default function KeysClient({
   initialKeys,
   modelSlugs,
-  isAdmin,
   currentUserId,
   userList,
   teamList,
-  appList,
   initialFilterOwnerType,
   initialFilterOwnerId,
+  gatewayUrl = "",
 }: KeysClientProps) {
   const [keys, setKeys] = useState<ApiKey[]>(initialKeys);
   const [showForm, setShowForm] = useState(false);
   const [plaintext, setPlaintext] = useState<string | null>(null);
+  const [createdKeyAllowedModels, setCreatedKeyAllowedModels] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
+  const [handoutCopied, setHandoutCopied] = useState(false);
 
-  // Admin owner type selector;初始态来自 URL 预筛参数
-  const [ownerType, setOwnerType] = useState<"user" | "team" | "app">(
-    initialFilterOwnerType ?? "user",
+  // 归属类型选择:v1.1 仅 team(推荐)/user;初始态来自 URL 预筛参数
+  const [ownerType, setOwnerType] = useState<"user" | "team">(
+    initialFilterOwnerType ?? "team",
   );
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setFormError(null);
     const formData = new FormData(e.currentTarget);
+    // 捕获当前选中的模型(用于生成 handout)
+    const selectedModels = formData.getAll("allowedModels") as string[];
 
     startTransition(async () => {
       const result = await createKeyAction(formData);
@@ -65,6 +69,7 @@ export default function KeysClient({
       }
       if (result.plaintext) {
         setPlaintext(result.plaintext);
+        setCreatedKeyAllowedModels(selectedModels);
       }
       setShowForm(false);
       // Refresh list by reloading the page data
@@ -112,16 +117,34 @@ export default function KeysClient({
     }
   }
 
+  async function handleHandoutCopy(handoutText: string) {
+    await navigator.clipboard.writeText(handoutText);
+    setHandoutCopied(true);
+    setTimeout(() => setHandoutCopied(false), 2000);
+  }
+
+  /** 生成 handout 文本,网关未配置时返回 null */
+  function getHandoutText(): string | null {
+    if (!plaintext) return null;
+    const effectiveGatewayUrl = gatewayUrl.trim();
+    if (!effectiveGatewayUrl) return null;
+    return buildHandout({
+      gatewayUrl: effectiveGatewayUrl,
+      plaintextKey: plaintext,
+      modelSlugs: createdKeyAllowedModels,
+    });
+  }
+
   const getOwnerOptions = () => {
-    if (ownerType === "user") return userList.map((u) => ({ id: u.id, label: u.email }));
     if (ownerType === "team") return teamList.map((t) => ({ id: t.id, label: t.name }));
-    return appList.map((a) => ({ id: a.id, label: a.name }));
+    // ownerType === "user"(管理员自己)
+    return userList.map((u) => ({ id: u.id, label: u.email }));
   };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">API Key 管理</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Key 管理</h1>
         <button
           onClick={() => { setShowForm(true); setPlaintext(null); }}
           className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"
@@ -130,7 +153,7 @@ export default function KeysClient({
         </button>
       </div>
 
-      {/* 一次性明文展示 */}
+      {/* 一次性明文展示 + 接入说明 */}
       {plaintext && (
         <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
           <p className="text-sm font-semibold text-yellow-800 mb-2">
@@ -147,9 +170,40 @@ export default function KeysClient({
               {copied ? "已复制!" : "复制"}
             </button>
           </div>
+
+          {/* 接入说明区 */}
+          <div className="mt-4">
+            <p className="text-sm font-semibold text-yellow-800 mb-2">接入说明</p>
+            {gatewayUrl.trim() ? (
+              (() => {
+                const handoutText = getHandoutText()!;
+                return (
+                  <div>
+                    <textarea
+                      readOnly
+                      value={handoutText}
+                      className="w-full h-64 text-xs font-mono bg-white border border-yellow-300 rounded px-3 py-2 resize-y"
+                      onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                    />
+                    <button
+                      onClick={() => handleHandoutCopy(handoutText)}
+                      className="mt-1 px-3 py-1.5 bg-yellow-600 text-white text-sm rounded-md hover:bg-yellow-700"
+                    >
+                      {handoutCopied ? "已复制!" : "复制接入说明"}
+                    </button>
+                  </div>
+                );
+              })()
+            ) : (
+              <p className="text-sm text-yellow-700 italic">
+                请在 .env 配置 GATEWAY_PUBLIC_URL 以生成接入说明
+              </p>
+            )}
+          </div>
+
           <button
             onClick={() => setPlaintext(null)}
-            className="mt-2 text-xs text-yellow-700 hover:underline"
+            className="mt-3 text-xs text-yellow-700 hover:underline"
           >
             关闭
           </button>
@@ -169,47 +223,44 @@ export default function KeysClient({
                 name="name"
                 type="text"
                 required
-                placeholder="如:生产环境 Key"
+                placeholder="如:张三的 Key"
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
-            {/* Admin: 归属主体选择 */}
-            {isAdmin && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    归属类型
-                  </label>
-                  <select
-                    name="ownerType"
-                    value={ownerType}
-                    onChange={(e) => setOwnerType(e.target.value as "user" | "team" | "app")}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="user">用户</option>
-                    <option value="team">团队</option>
-                    <option value="app">应用</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    归属实体
-                  </label>
-                  <select
-                    name="ownerId"
-                    defaultValue={initialFilterOwnerId ?? ""}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {getOwnerOptions().map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            {/* 归属主体选择:v1.1 仅 team/user */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  归属类型
+                </label>
+                <select
+                  name="ownerType"
+                  value={ownerType}
+                  onChange={(e) => setOwnerType(e.target.value as "user" | "team")}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="team">团队(推荐,成员 Key)</option>
+                  <option value="user">管理员自己(个人测试用)</option>
+                </select>
               </div>
-            )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  归属实体
+                </label>
+                <select
+                  name="ownerId"
+                  defaultValue={initialFilterOwnerId ?? ""}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {getOwnerOptions().map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
             {/* allowedModels 多选 */}
             <div>
@@ -260,6 +311,40 @@ export default function KeysClient({
                 开启审计(记录请求/响应内容)
               </label>
             </div>
+
+            {/* 预算区 */}
+            <fieldset className="border border-gray-200 rounded-md p-3">
+              <legend className="text-sm font-medium text-gray-700 px-1">
+                预算{" "}
+                <span className="text-gray-400 font-normal">(可选,不填=不限)</span>
+              </legend>
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    限额 (CNY)
+                  </label>
+                  <input
+                    name="budgetLimit"
+                    type="text"
+                    placeholder="如: 100 或 50.50"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    周期
+                  </label>
+                  <select
+                    name="budgetPeriod"
+                    defaultValue="monthly"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="monthly">月度(monthly)</option>
+                    <option value="total">总额度(total)</option>
+                  </select>
+                </div>
+              </div>
+            </fieldset>
 
             {formError && (
               <p className="text-sm text-red-600">{formError}</p>
@@ -350,23 +435,17 @@ export default function KeysClient({
                   {key.expiresAt ? key.expiresAt.toLocaleString("zh-CN") : "—"}
                 </td>
                 <td className="px-4 py-3 text-sm">
-                  {isAdmin ? (
-                    <button
-                      onClick={() => handleToggleAudit(key.id, key.auditEnabled)}
-                      disabled={isPending || key.status === "revoked"}
-                      className={`text-xs px-2 py-1 rounded ${
-                        key.auditEnabled
-                          ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
-                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                      } disabled:opacity-50`}
-                    >
-                      {key.auditEnabled ? "开" : "关"}
-                    </button>
-                  ) : (
-                    <span className="text-xs text-gray-500">
-                      {key.auditEnabled ? "开" : "关"}
-                    </span>
-                  )}
+                  <button
+                    onClick={() => handleToggleAudit(key.id, key.auditEnabled)}
+                    disabled={isPending || key.status === "revoked"}
+                    className={`text-xs px-2 py-1 rounded ${
+                      key.auditEnabled
+                        ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    } disabled:opacity-50`}
+                  >
+                    {key.auditEnabled ? "开" : "关"}
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-right">
                   {key.status === "active" && (
