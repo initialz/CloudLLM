@@ -2204,10 +2204,11 @@ const app = createApp({
   keyRepo: new DrizzleKeyRepo(db),
   catalog: new DrizzleCatalogRepo(db),
   loader: new DrizzleBudgetLoader(db),
-  balance: new RedisBalanceStore(redis),
+  balance: new RedisBalanceStore(redis, config.balanceTtlSeconds),
   cooldown: new RedisCooldownStore(redis),
   events: new RedisEventSink(redis, config.usageStream),
 });
+// 注:RedisEventSink 内部以 MAXLEN ~ 500000 近似裁剪流,防 worker 滞后时无界增长
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`gateway 监听 :${info.port}`);
