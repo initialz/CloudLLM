@@ -1,0 +1,58 @@
+# 多副本扩容说明：Worker 使用 Redis XREADGROUP 消费组（consumer name = Pod hostname）。
+# 增加副本数即水平扩展消费能力：每个 Pod 独立注册为一个消费者，Redis 自动按消费者分片
+# 分配 pending 消息；XAUTOCLAIM 按 idle 时间认领崩溃 Pod 遗留的 pending 消息。
+# 因此多副本消费安全，扩容时直接修改 replicas 即可。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: byok-worker
+  namespace: byok
+  labels:
+    app.kubernetes.io/name: byok-worker
+    app.kubernetes.io/part-of: byok
+spec:
+  # 默认 1 副本；需提升吞吐时增加（见上方说明）
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: byok-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: byok-worker
+        app.kubernetes.io/part-of: byok
+    spec:
+      # Worker 收到 SIGTERM 后处理完当前消费批次再退出，无需额外排水时间
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          # 替换 <registry> 和 <tag> 为实际镜像地址
+          image: <registry>/byok-worker:<tag>
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: byok-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: byok-secrets
+                  key: REDIS_URL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          # Worker 无 HTTP 服务端口，无法使用 httpGet 探针。
+          # 选项 A（推荐，已省略）：不配置 liveness/readiness，依赖进程退出码触发重启；
+          #   Worker 崩溃时 Kubernetes 会按 restartPolicy(Always) 自动重启。
+          # 选项 B：如需健康检查，可添加 exec 探针（示例，按需取消注释）：
+          # livenessProbe:
+          #   exec:
+          #     command: ["node", "-e", "process.exit(0)"]
+          #   initialDelaySeconds: 10
+          #   periodSeconds: 30
+          #   failureThreshold: 3

@@ -51,19 +51,51 @@
 
 ## 快速开始（本地开发）
 
-### 1. 依赖
+### 方式 A：Docker 全栈（推荐，免装 Node/pnpm）
+
+只需 Docker，一条命令起全栈（postgres + redis + migrate + seed + gateway + worker + console）：
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build
+```
+
+等待约 1 分钟（首次构建）。启动后验证：
+
+```bash
+curl localhost:8080/healthz            # {"ok":true}
+open http://localhost:3000/login       # Console 登录页
+```
+
+默认管理员账号：`admin@example.com` / `change-me-now`
+
+停止（保留数据卷，下次 up 不需重跑 migrate/seed）：
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+> **端口说明**：dev compose 使用 `15432:5432`（postgres）和 `6380:6379`（redis）映射到宿主，
+> 避免与本地已有 PG/Redis 冲突。容器内互联不受影响。
+
+---
+
+### 方式 B：pnpm 代码迭代（改代码 + 热重载）
+
+适合正在开发某个服务时，可与方式 A 混合：用 compose 跑基础设施，只 pnpm dev 正在修改的服务。
+
+#### 1. 依赖
 
 - Node.js >= 22
 - pnpm >= 10.12.1（`corepack enable` 后自动激活）
 - Docker（PostgreSQL + Redis）
 
-### 2. 启动 PG + Redis（本地 dev 用）
+#### 2. 启动 PG + Redis（本地 dev 用）
 
 ```bash
-docker compose up -d   # 使用根目录 docker-compose.yml
+docker compose up -d   # 使用根目录 docker-compose.yml（PG:5432, Redis:6379）
 ```
 
-### 3. 数据库迁移 & 种子数据
+#### 3. 数据库迁移 & 种子数据
 
 ```bash
 # 迁移
@@ -75,7 +107,7 @@ pnpm --filter @byok/db seed
 # 可通过环境变量覆盖：SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD
 ```
 
-### 4. 启动三个服务
+#### 4. 启动三个服务
 
 ```bash
 # 终端 1：Gateway（:8080）
@@ -88,16 +120,37 @@ pnpm --filter @byok/worker build && node apps/worker/dist/index.js
 pnpm --filter @byok/console dev
 ```
 
-### 5. 验证
+#### 5. 验证
 
 ```bash
 curl localhost:8080/healthz          # 200 OK
 open http://localhost:3000/login     # Console 登录
 ```
 
+#### 混合模式（推荐进阶用法）
+
+用 dev compose 跑基础设施和不修改的服务，pnpm dev 跑正在迭代的服务：
+
+```bash
+# 起基础设施 + gateway + worker（不改这些）
+docker compose -f docker-compose.dev.yml up -d postgres redis gateway worker
+
+# 本地热重载 console（正在迭代）
+DATABASE_URL=postgres://byok:byok_dev@localhost:15432/byok \
+  MASTER_KEY=/o4Hoi3CCed8CohTkzih2Ni634Os4g16ZHPNU8SXsx8= \
+  SESSION_SECRET=8eaacf2d4f8f9d3019e9a3bab0ad343baba77f6a6af9cc2ce20990de0eb8cca5 \
+  GATEWAY_PUBLIC_URL=http://localhost:8080 \
+  pnpm --filter @byok/console dev
+```
+
+> 注意混合模式时，本地服务的端口（`:3000`）不能与 compose 中同服务冲突。
+> 如需两者共存，可在 compose 中先 `docker compose -f docker-compose.dev.yml stop console`。
+
 ---
 
 ## 生产部署（Docker Compose）
+
+> K8s 部署方式（多节点高可用、水平扩缩容）：见 [deploy/k8s/README.md](deploy/k8s/README.md)
 
 ### 1. 准备 .env
 
@@ -365,7 +418,8 @@ byok/
 ├── deploy/
 │   ├── docker-compose.prod.yml
 │   └── .env.prod.example
-├── docker-compose.yml  # 本地 dev 用（PG + Redis）
+├── docker-compose.yml      # 本地 dev 基础设施（PG + Redis，与 pnpm 方式 B 配合）
+├── docker-compose.dev.yml  # 全容器化开发（方式 A，免装 Node/pnpm）
 ├── pnpm-workspace.yaml
 └── README.md
 ```
