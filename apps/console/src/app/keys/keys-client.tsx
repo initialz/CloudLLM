@@ -7,7 +7,6 @@ interface ApiKey {
   id: string;
   ownerType: "user" | "team" | "app";
   ownerId: string;
-  keyHash: string;
   keyPrefix: string;
   name: string | null;
   allowedModels: string[] | null;
@@ -15,7 +14,6 @@ interface ApiKey {
   expiresAt: Date | null;
   status: "active" | "disabled" | "revoked";
   createdAt: Date;
-  updatedAt: Date;
 }
 
 interface KeysClientProps {

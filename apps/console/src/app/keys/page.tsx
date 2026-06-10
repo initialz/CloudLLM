@@ -10,9 +10,31 @@ export default async function KeysPage() {
 
   // 查询可见 key 列表
   const keyRows = isAdmin
-    ? await db.select().from(apiKeys).orderBy(apiKeys.createdAt)
+    ? await db.select({
+        id: apiKeys.id,
+        keyPrefix: apiKeys.keyPrefix,
+        name: apiKeys.name,
+        ownerType: apiKeys.ownerType,
+        ownerId: apiKeys.ownerId,
+        allowedModels: apiKeys.allowedModels,
+        auditEnabled: apiKeys.auditEnabled,
+        expiresAt: apiKeys.expiresAt,
+        status: apiKeys.status,
+        createdAt: apiKeys.createdAt,
+      }).from(apiKeys).orderBy(apiKeys.createdAt)
     : await db
-        .select()
+        .select({
+          id: apiKeys.id,
+          keyPrefix: apiKeys.keyPrefix,
+          name: apiKeys.name,
+          ownerType: apiKeys.ownerType,
+          ownerId: apiKeys.ownerId,
+          allowedModels: apiKeys.allowedModels,
+          auditEnabled: apiKeys.auditEnabled,
+          expiresAt: apiKeys.expiresAt,
+          status: apiKeys.status,
+          createdAt: apiKeys.createdAt,
+        })
         .from(apiKeys)
         .where(
           and(

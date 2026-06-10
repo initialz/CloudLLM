@@ -46,7 +46,7 @@ export async function createKeyAction(formData: FormData): Promise<CreateKeyResu
       ownerId = session.userId;
     } else {
       ownerType = ownerTypeRaw as "user" | "team" | "app";
-      ownerId = ownerIdRaw ?? session.userId;
+      ownerId = ownerIdRaw || session.userId;
     }
   } else {
     // 普通用户:强制自己
@@ -56,6 +56,10 @@ export async function createKeyAction(formData: FormData): Promise<CreateKeyResu
 
   if (!name) {
     return { error: "名称不能为空" };
+  }
+
+  if (expiresAt && (isNaN(expiresAt.getTime()) || expiresAt <= new Date())) {
+    return { error: "过期时间必须是未来的有效时间" };
   }
 
   try {
@@ -141,12 +145,25 @@ export async function getActiveModelSlugs(): Promise<string[]> {
 export async function listKeysAction() {
   const session = await requireUser();
 
+  const selectColumns = {
+    id: apiKeys.id,
+    keyPrefix: apiKeys.keyPrefix,
+    name: apiKeys.name,
+    ownerType: apiKeys.ownerType,
+    ownerId: apiKeys.ownerId,
+    allowedModels: apiKeys.allowedModels,
+    auditEnabled: apiKeys.auditEnabled,
+    expiresAt: apiKeys.expiresAt,
+    status: apiKeys.status,
+    createdAt: apiKeys.createdAt,
+  };
+
   if (session.role === "admin") {
-    return db.select().from(apiKeys).orderBy(apiKeys.createdAt);
+    return db.select(selectColumns).from(apiKeys).orderBy(apiKeys.createdAt);
   }
 
   return db
-    .select()
+    .select(selectColumns)
     .from(apiKeys)
     .where(
       and(
