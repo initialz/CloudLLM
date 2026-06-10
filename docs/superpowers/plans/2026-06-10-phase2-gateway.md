@@ -2019,6 +2019,7 @@ export function createApp(deps: AppDeps): Hono {
       cooldown: deps.cooldown,
       cooldownSeconds: deps.cooldownSeconds,
       anthropicVersion: req.headers.get("anthropic-version") ?? undefined,
+      anthropicBeta: req.headers.get("anthropic-beta") ?? undefined,
       fetchImpl: deps.fetchImpl,
     });
 
