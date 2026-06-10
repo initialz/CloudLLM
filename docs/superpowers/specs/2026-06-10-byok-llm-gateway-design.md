@@ -194,10 +194,11 @@ Gateway 在热路径上读 Redis 缓存余额做准实时判断；扣减在请�
 ## 7. 技术栈
 
 - **Gateway**：Node.js + Hono（轻量、流式友好）。无状态，水平扩展。
-- **Console**：Next.js（App Router），含后台 UI + 用量消费 worker + 定时 job。
+- **Console**：Next.js（App Router），后台 UI 与管理 API。
+- **Worker**：独立轻量 Node 服务（apps/worker），用量消费落库 + 月度重置/审计清理定时 job（修订：从 Console 内嵌改为独立部署单元，便于 compose/K8s 独立伸缩与发布）。
 - **存储**：PostgreSQL（业务库）、Redis（缓存/计数/队列）。
 - **语言**：全栈 TypeScript，Monorepo 管理，共享类型与数据访问层。
-- **部署**：公司 K8s。
+- **部署**：docker compose 为主推方式（内部规模足够、运维门槛低）；K8s 拓扑保留为规模化选项。
 
 ## 8. 部署拓扑（K8s）
 
