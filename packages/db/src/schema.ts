@@ -76,7 +76,10 @@ export const apiKeys = pgTable(
       .notNull()
       .default("active"),
     createdAt: createdAt(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (t) => [
     uniqueIndex("api_keys_key_hash_idx").on(t.keyHash),

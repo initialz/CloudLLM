@@ -12,7 +12,7 @@ const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "admin@example.com";
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "change-me-now";
 
 async function main() {
-  const db = createDb(DATABASE_URL);
+  const { db, sql } = createDb(DATABASE_URL, { max: 1 });
 
   await db
     .insert(users)
@@ -32,7 +32,7 @@ async function main() {
     .onConflictDoNothing({ target: providers.type });
 
   console.log("seed 完成:admin =", ADMIN_EMAIL);
-  process.exit(0);
+  await sql.end();
 }
 
 main().catch((err) => {

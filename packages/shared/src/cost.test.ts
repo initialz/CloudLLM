@@ -87,3 +87,19 @@ describe("computeCostCny 输入防御", () => {
     ).toBe("0.000000");
   });
 });
+
+describe("cnyToMicro 负数(读回台账冲正)", () => {
+  it("解析负数金额", () => {
+    expect(cnyToMicro("-1.5")).toBe(-1_500_000n);
+    expect(cnyToMicro("-0.000001")).toBe(-1n);
+  });
+
+  it("与 microToCny 互为逆运算(负数)", () => {
+    expect(microToCny(cnyToMicro("-12.345678"))).toBe("-12.345678");
+  });
+
+  it("仍拒绝非法格式", () => {
+    expect(() => cnyToMicro("--1")).toThrow();
+    expect(() => cnyToMicro("-")).toThrow();
+  });
+});
