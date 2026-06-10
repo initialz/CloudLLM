@@ -35,7 +35,10 @@ export function extractUsageFromJson(protocol: Protocol, body: unknown): UsageTo
   };
 }
 
-/** SSE 流用量收集器:把已解码文本喂给 push(),流结束后 totals() 取结果。容忍跨 chunk 断行。 */
+/** SSE 流用量收集器:把已解码文本喂给 push(),流结束后 totals() 取结果。容忍跨 chunk 断行。
+ * 注意:流在 message_delta/最终 usage chunk 之前被中断时,输出 token 记 0(v1 接受
+ * 该少计,Phase 3 对账修正;中断的流上游同样计费,故这是少计而非多计风险)。
+ */
 export class SseUsageTap {
   private buffer = "";
   private usage: UsageTotals = zero();
@@ -60,7 +63,7 @@ export class SseUsageTap {
   }
 
   totals(): UsageTotals {
-    return this.usage;
+    return { ...this.usage };
   }
 
   private consume(evt: Record<string, unknown>): void {

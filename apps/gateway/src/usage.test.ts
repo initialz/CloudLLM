@@ -75,3 +75,17 @@ describe("SseUsageTap anthropic", () => {
     expect(tap.totals()).toEqual({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
   });
 });
+
+describe("SseUsageTap 边界", () => {
+  it("CRLF 行尾正常解析", () => {
+    const tap = new SseUsageTap("openai");
+    tap.push('data: {"usage":{"prompt_tokens":10,"completion_tokens":5},"choices":[]}\r\ndata: [DONE]\r\n');
+    expect(tap.totals()).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 });
+  });
+
+  it("anthropic 流中断(无 message_delta)时输出记 0", () => {
+    const tap = new SseUsageTap("anthropic");
+    tap.push('data: {"type":"message_start","message":{"usage":{"input_tokens":25,"output_tokens":1}}}\n\n');
+    expect(tap.totals()).toEqual({ inputTokens: 25, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
+  });
+});
