@@ -224,3 +224,35 @@ describe("GET /healthz", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("停机排水 & 缓存防污染", () => {
+  it("pendingSettlements 跟踪结算并在完成后移除", async () => {
+    const pending = new Set<Promise<void>>();
+    const { deps } = makeDeps();
+    deps.pendingSettlements = pending;
+    const app = createApp(deps);
+    await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey.plaintext}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "openai/gpt-test", messages: [] }),
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(pending.size).toBe(0);
+  });
+
+  it("未知模型不污染缓存(连续两次 404)", async () => {
+    let calls = 0;
+    const { deps } = makeDeps();
+    const origGetModel = deps.catalog.getModel.bind(deps.catalog);
+    deps.catalog = { ...deps.catalog, getModel: async (s) => { calls++; return origGetModel(s); } };
+    const app = createApp(deps);
+    const mk = () => app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey.plaintext}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: "nope/none", messages: [] }),
+    });
+    expect((await mk()).status).toBe(404);
+    expect((await mk()).status).toBe(404);
+    expect(calls).toBe(2);
+  });
+});

@@ -87,7 +87,13 @@ export class DrizzleBudgetLoader implements BudgetLoader {
   async loadRemainingMicro(subject: BudgetSubject): Promise<bigint | null> {
     const rows = await this.db
       .select({
-        remaining: sql<string>`(${budgets.limitAmountCny} - ${budgets.usedAmountCny})::text`,
+        remaining: sql<string>`(${budgets.limitAmountCny} - CASE
+          WHEN ${budgets.period} = 'monthly'
+           AND ${budgets.periodStart} IS NOT NULL
+           AND date_trunc('month', ${budgets.periodStart}) < date_trunc('month', now())
+          THEN 0
+          ELSE ${budgets.usedAmountCny}
+        END)::text`,
       })
       .from(budgets)
       .where(

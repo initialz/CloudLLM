@@ -1,19 +1,17 @@
-import type { CatalogRepo, ChannelChoice, CooldownStore } from "./types.js";
+import type { ChannelChoice, CooldownStore } from "./types.js";
 
 /**
  * 返回有序候选渠道列表(供故障转移逐个尝试):
  * priority 升序分组;组内按 weight 加权随机排列;跳过 cooldown 中的渠道。
  */
 export async function selectCandidates(
-  catalog: CatalogRepo,
+  channels: ChannelChoice[],
   cooldown: CooldownStore,
-  modelSlug: string,
   rng: () => number = Math.random,
 ): Promise<ChannelChoice[]> {
-  const all = await catalog.getChannelsForModel(modelSlug);
   // 并发查冷却状态:热路径上避免 N 次串行 Redis 往返
-  const cooling = await Promise.all(all.map((c) => cooldown.isCooling(c.channelId)));
-  const usable = all.filter((_, i) => !cooling[i]);
+  const cooling = await Promise.all(channels.map((c) => cooldown.isCooling(c.channelId)));
+  const usable = channels.filter((_, i) => !cooling[i]);
   const groups = new Map<number, ChannelChoice[]>();
   for (const channel of usable) {
     const group = groups.get(channel.priority) ?? [];
