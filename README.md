@@ -104,6 +104,7 @@ open http://localhost:3000/login     # Console 登录
 ```bash
 cd deploy
 cp .env.prod.example .env
+chmod 600 .env   # 限制读权限，防止其他用户读取敏感凭证
 ```
 
 编辑 `.env`，填入由下方命令生成的随机值：
@@ -146,13 +147,13 @@ docker compose -f docker-compose.prod.yml ps
 ### 4. 初始化 seed（首次部署）
 
 ```bash
-# 方式 1（推荐）：使用 worker 镜像一次性运行 seed（读取 .env 中 SEED_ADMIN_EMAIL/PASSWORD）
+# 方式 1（推荐）：使用 worker 镜像一次性运行 seed
+# DATABASE_URL 由 worker 服务定义自动注入，无需重复传递
 docker compose -f docker-compose.prod.yml --env-file .env \
-  run --rm worker \
-  sh -c "DATABASE_URL=${DATABASE_URL} \
-         SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL:-admin@example.com} \
-         SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-change-me-now} \
-         node node_modules/@byok/db/dist/seed.js"
+  run --rm \
+  -e SEED_ADMIN_EMAIL=admin@yourcompany.com \
+  -e SEED_ADMIN_PASSWORD='use-a-strong-password' \
+  worker node node_modules/@byok/db/dist/seed.js
 
 # 方式 2：直接 psql 手动插入（最简单兜底）
 docker compose -f docker-compose.prod.yml exec postgres \
