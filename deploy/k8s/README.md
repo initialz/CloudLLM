@@ -205,6 +205,10 @@ kubectl wait job/byok-migrate \
   --namespace=byok \
   --for=condition=complete \
   --timeout=300s
+# Job 失败时该命令会等满超时；可另开终端执行
+# kubectl wait job/byok-migrate -n byok --for=condition=failed --timeout=300s
+# 或直接查看状态：kubectl get job byok-migrate -n byok -o wide
+# 以及查看日志：kubectl logs job/byok-migrate -n byok
 
 # 查看日志确认无错误
 kubectl logs -n byok -l app.kubernetes.io/name=byok-migrate
@@ -239,20 +243,46 @@ kubectl apply -f deploy/k8s/ingress.yaml
 
 ### 5.6 初始化 seed 数据（首次部署）
 
-首次部署需要创建初始管理员账号：
+首次部署需要创建初始管理员账号。
+
+> 不使用 `kubectl run --env=...$(kubectl get secret...)` 的原因：该写法会将 Secret 明文展开到
+> 进程参数或 shell history，存在凭证泄露风险。下方 Job 通过 `secretRef` / `secretKeyRef` 在
+> 集群内安全注入，凭证不经过本地终端。
+
+修改下方 YAML 中的 `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` 值后执行：
 
 ```bash
-# 使用 worker 镜像一次性运行 seed（幂等，可重复执行）
-kubectl run byok-seed \
-  --namespace=byok \
-  --image=${REGISTRY}/byok-worker:${TAG} \
-  --restart=Never \
-  --rm -it \
-  --env="DATABASE_URL=$(kubectl get secret byok-secrets -n byok -o jsonpath='{.data.DATABASE_URL}' | base64 -d)" \
-  --env="SEED_ADMIN_EMAIL=admin@yourcompany.com" \
-  --env="SEED_ADMIN_PASSWORD=use-a-strong-password" \
-  -- node node_modules/@byok/db/dist/seed.js
+kubectl apply -f - <<'EOF'
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: byok-seed
+  namespace: byok
+  labels:
+    app.kubernetes.io/name: byok-seed
+    app.kubernetes.io/part-of: byok
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: <registry>/byok-worker:<tag>
+          command: ["node", "node_modules/@byok/db/dist/seed.js"]
+          envFrom:
+            - secretRef:
+                name: byok-secrets
+          env:
+            - name: SEED_ADMIN_EMAIL
+              value: "admin@yourcompany.com"   # 改为实际管理员邮箱
+            - name: SEED_ADMIN_PASSWORD
+              value: "change-me-strong-password"  # 改为强密码
+EOF
 ```
+
+seed Job 完成后可通过 `kubectl logs -n byok job/byok-seed` 确认执行结果；
+600 秒后 Job 自动清理（`ttlSecondsAfterFinished: 600`）。
 
 ### 5.7 验证部署
 
@@ -294,6 +324,10 @@ kubectl delete job byok-migrate -n byok --ignore-not-found
 sed "s|<registry>/byok-worker:<tag>|${REGISTRY}/byok-worker:${NEW_TAG}|g" \
   deploy/k8s/migrate-job.yaml | kubectl apply -f -
 kubectl wait job/byok-migrate --namespace=byok --for=condition=complete --timeout=300s
+# Job 失败时该命令会等满超时；可另开终端执行
+# kubectl wait job/byok-migrate -n byok --for=condition=failed --timeout=300s
+# 或直接查看状态：kubectl get job byok-migrate -n byok -o wide
+# 以及查看日志：kubectl logs job/byok-migrate -n byok
 
 # 步骤 3：滚动更新三个 Deployment（零停机）
 kubectl set image deployment/byok-gateway gateway=${REGISTRY}/byok-gateway:${NEW_TAG} -n byok

@@ -1,3 +1,6 @@
+# 升级时先删除旧 Job 再重新 apply，或使用 kubectl create 而非 apply
+# kubectl delete job byok-migrate -n byok --ignore-not-found
+# kubectl apply -f migrate-job.yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -6,10 +9,6 @@ metadata:
   labels:
     app.kubernetes.io/name: byok-migrate
     app.kubernetes.io/part-of: byok
-  annotations:
-    # 升级时先删除旧 Job 再重新 apply，或使用 kubectl create 而非 apply
-    # kubectl delete job byok-migrate -n byok --ignore-not-found
-    # kubectl apply -f migrate-job.yaml
 spec:
   # 完成后 600 秒自动清理（保留日志供查看），设为 0 立即清理
   ttlSecondsAfterFinished: 600

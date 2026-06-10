@@ -17,8 +17,8 @@ spec:
         app.kubernetes.io/name: byok-gateway
         app.kubernetes.io/part-of: byok
     spec:
-      # 优雅停机：SIGTERM → 25s 排水（terminationGracePeriodSeconds 给 30s 余量）
-      terminationGracePeriodSeconds: 30
+      # 优雅停机：preStop 5s + 应用 25s 硬超时，留 5s 余量，总宽限 35s
+      terminationGracePeriodSeconds: 35
       containers:
         - name: gateway
           # 替换 <registry> 和 <tag> 为实际镜像地址；tag 推荐使用 git commit SHA
@@ -67,7 +67,7 @@ spec:
           lifecycle:
             preStop:
               # preStop sleep 5s 保证 Ingress/LB 摘流后再开始排水；
-              # 应用自身 SIGTERM handler 有 25s 排水窗口，总宽限 30s
+              # 应用自身 SIGTERM handler 有 25s 排水窗口，总宽限 35s
               exec:
                 command: ["/bin/sh", "-c", "sleep 5"]
 ---
