@@ -172,6 +172,8 @@ export const usageRecords = pgTable(
   "usage_records",
   {
     id: id(),
+    /** Redis Stream entry ID,worker 幂等去重用(at-least-once 投递) */
+    eventId: text("event_id").unique(),
     keyId: uuid("key_id").notNull().references(() => apiKeys.id),
     modelSlug: text("model_slug").notNull(),
     channelId: uuid("channel_id").references(() => channels.id),
