@@ -21,6 +21,10 @@ const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 天
 /**
  * 凭证校验:单独封装便于 SSO 替换
  * 返回用户行或 null
+ *
+ * 已知限制(timing 侧信道):用户不存在时直接返回 null,跳过 scrypt 运算,
+ * 导致响应时间比密码错误时短,可被用于用户枚举。v1 接受此风险;
+ * 未来修复方案:用户不存在时执行 dummy hash 以保持时间一致性。
  */
 export async function verifyCredentials(email: string, password: string) {
   const rows = await db

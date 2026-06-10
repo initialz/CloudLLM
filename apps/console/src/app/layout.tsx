@@ -1,18 +1,24 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { eq } from "drizzle-orm";
 import Link from "next/link";
 import "./globals.css";
 import { logoutAction } from "./logout-action";
 import { decodeSession } from "../lib/session";
+import { db } from "../lib/db";
+import { users } from "@byok/db";
 
 export const metadata: Metadata = {
   title: "BYOK Console",
   description: "BYOK 管理后台",
 };
 
-/** 从 cookie 读取当前会话(layout 内用,无效不 redirect——由 middleware 处理) */
+/** 从 cookie 读取当前会话(layout 内用,无效不 redirect——由 middleware 处理)
+ *  SESSION_SECRET 为空或长度 <32 时直接视为未登录,返回 null,不得用空 secret 调 decodeSession。
+ */
 async function getCurrentSession() {
-  const secret = process.env.SESSION_SECRET ?? "";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) return null;
   const cookieStore = await cookies();
   const raw = cookieStore.get("byok_session")?.value;
   return decodeSession(raw, secret);
@@ -45,6 +51,15 @@ export default async function RootLayout({
       </html>
     );
   }
+
+  // 查询用户邮箱用于顶部显示;查不到时兜底显示 userId
+  const userRow = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+  const displayName = userRow?.email ?? session.userId;
 
   return (
     <html lang="zh-CN">
@@ -85,7 +100,7 @@ export default async function RootLayout({
           <div className="flex-1 flex flex-col">
             {/* 顶部栏:右上显示邮箱 + 退出 */}
             <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-end px-6 gap-4">
-              <span className="text-sm text-gray-600">{session.userId}</span>
+              <span className="text-sm text-gray-600">{displayName}</span>
               <form action={logoutAction}>
                 <button
                   type="submit"

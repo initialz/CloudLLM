@@ -8,7 +8,9 @@ declare global {
 
 function getDb(): Db {
   if (globalThis.__byokDb) return globalThis.__byokDb;
-  const { db } = createDb(process.env.DATABASE_URL!);
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL 未设置");
+  const { db } = createDb(url);
   globalThis.__byokDb = db;
   return db;
 }

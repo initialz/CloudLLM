@@ -12,11 +12,11 @@ const COOKIE_NAME = "byok_session";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 白名单:登录页、Next.js 内部路由、静态资源、API 路由
+  // 白名单:登录页、Next.js 内部路由、静态资源
+  // 注:console 无 /api 路由,全部走 server actions,不豁免 /api
   if (
     pathname.startsWith("/login") ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/api") ||
     pathname.startsWith("/favicon") ||
     pathname.includes(".")
   ) {

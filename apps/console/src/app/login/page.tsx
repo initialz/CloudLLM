@@ -1,3 +1,5 @@
+// 已知限制:此页面使用 useActionState + useRouter,依赖客户端 JS。
+// 禁用 JS 的浏览器将无法完成登录流程。v1 接受此限制;未来可考虑添加 <noscript> 提示。
 "use client";
 
 import { useActionState, useEffect } from "react";
