@@ -18,18 +18,39 @@ export interface UsageRow {
 
 /** 按维度聚合用量;dimension: model_slug | key_id | day */
 export async function aggregateUsage(db: Db, filter: UsageFilter, dimension: "model" | "key" | "day"): Promise<UsageRow[]> {
-  const bucketExpr =
-    dimension === "model"
-      ? sql<string>`${usageRecords.modelSlug}`
-      : dimension === "key"
-        ? sql<string>`${usageRecords.keyId}::text`
-        : sql<string>`to_char(date_trunc('day', ${usageRecords.createdAt}), 'YYYY-MM-DD')`;
-
   const conds = [gte(usageRecords.createdAt, filter.from), lt(usageRecords.createdAt, filter.to)];
   if (filter.keyIds !== null) {
     if (filter.keyIds.length === 0) return [];
     conds.push(inArray(usageRecords.keyId, filter.keyIds));
   }
+
+  if (dimension === "key") {
+    // Key 维度:left join api_keys,显示 keyPrefix + name;Key 已删除时降级为 keyId::text
+    const keyBucketExpr = sql<string>`coalesce(
+      ${apiKeys.keyPrefix} || ' ' || coalesce(${apiKeys.name}, ''),
+      ${usageRecords.keyId}::text
+    )`;
+
+    const rows = await db
+      .select({
+        bucket: keyBucketExpr,
+        requests: sql<number>`count(*)::int`,
+        inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)::int`,
+        outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)::int`,
+        costCny: sql<string>`coalesce(sum(${usageRecords.costCny}), 0)::text`,
+      })
+      .from(usageRecords)
+      .leftJoin(apiKeys, eq(usageRecords.keyId, apiKeys.id))
+      .where(and(...conds))
+      .groupBy(keyBucketExpr)
+      .orderBy(desc(sql`sum(${usageRecords.costCny})`));
+    return rows;
+  }
+
+  const bucketExpr =
+    dimension === "model"
+      ? sql<string>`${usageRecords.modelSlug}`
+      : sql<string>`to_char(date_trunc('day', ${usageRecords.createdAt}), 'YYYY-MM-DD')`;
 
   const rows = await db
     .select({
