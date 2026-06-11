@@ -1,6 +1,7 @@
 //! CloudLLM v2 — Rust 一体化 LLM 网关(hub + admin-ui)。
 
 pub mod config;
+pub mod crypto;
 
 /// 当前 unix epoch 秒。全工程统一时间来源。
 pub fn now_epoch() -> i64 {
