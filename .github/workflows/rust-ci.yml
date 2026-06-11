@@ -1,0 +1,36 @@
+name: rust-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  admin-ui:
+    runs-on: ubuntu-latest
+    # admin-ui 在后续任务才创建;目录不存在时跳过,避免 P1 中途 CI 红
+    steps:
+      - uses: actions/checkout@v4
+      - id: exists
+        run: test -f admin-ui/package.json && echo "yes=true" >> "$GITHUB_OUTPUT" || echo "yes=false" >> "$GITHUB_OUTPUT"
+      - if: steps.exists.outputs.yes == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - if: steps.exists.outputs.yes == 'true'
+        working-directory: admin-ui
+        run: npm ci && npm run build
+      - if: steps.exists.outputs.yes == 'false'
+        run: echo "admin-ui 尚未创建,跳过"

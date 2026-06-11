@@ -1,0 +1,33 @@
+[package]
+name = "cloudllm"
+version = "2.0.0-dev"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+axum = "0.7"
+axum-extra = { version = "0.9", features = ["cookie"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["trace"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+rust-embed = { version = "8", features = ["debug-embed"] }
+argon2 = "0.5"
+aes-gcm = "0.10"
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+rand = "0.8"
+uuid = { version = "1", features = ["v4"] }
+time = "0.3"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tempfile = "3"
