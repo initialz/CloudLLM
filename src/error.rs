@@ -9,6 +9,8 @@ pub struct ApiError {
     pub status: StatusCode,
     pub code: &'static str,
     pub message: String,
+    /// 仅日志可见的内部细节(原始错误),绝不进响应体
+    detail: Option<String>,
 }
 
 impl ApiError {
@@ -17,6 +19,7 @@ impl ApiError {
             status: StatusCode::UNAUTHORIZED,
             code: "unauthorized",
             message: "未登录或会话已失效".into(),
+            detail: None,
         }
     }
 
@@ -26,6 +29,7 @@ impl ApiError {
             status: StatusCode::UNAUTHORIZED,
             code: "login_failed",
             message: "邮箱或密码错误".into(),
+            detail: None,
         }
     }
 
@@ -34,21 +38,25 @@ impl ApiError {
             status: StatusCode::BAD_REQUEST,
             code: "bad_request",
             message: message.into(),
+            detail: None,
         }
     }
 
     pub fn internal(err: impl std::fmt::Display) -> Self {
-        tracing::error!(error = %err, "管理面内部错误");
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             code: "internal",
             message: "内部错误".into(),
+            detail: Some(err.to_string()),
         }
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let Some(detail) = &self.detail {
+            tracing::error!(error = %detail, code = self.code, "管理面内部错误");
+        }
         let body = Json(json!({"error": {"code": self.code, "message": self.message}}));
         (self.status, body).into_response()
     }

@@ -73,4 +73,20 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }
+
+    #[tokio::test]
+    async fn healthz_db_down_is_503() {
+        let state = crate::test_util::test_state().await;
+        state.db.close().await; // 单连接内存池,关闭后 SELECT 1 必失败
+        let resp = app(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
 }

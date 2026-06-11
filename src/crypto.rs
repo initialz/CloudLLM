@@ -25,13 +25,27 @@ pub struct GeneratedApiKey {
     pub key_prefix: String,
 }
 
+/// 测试编译走低成本参数(m=1MiB,t=1):默认参数单次 ~200ms,会把登录类用例拖成秒级。
+/// 算法路径与生产完全一致,仅 cost 不同;verify 按 PHC 串内参数自适配,互不影响。
+fn argon2_instance() -> Argon2<'static> {
+    #[cfg(test)]
+    {
+        let params = argon2::Params::new(1024, 1, 1, None).expect("测试 argon2 参数合法");
+        Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params)
+    }
+    #[cfg(not(test))]
+    {
+        Argon2::default()
+    }
+}
+
 pub fn hash_password(password: &str) -> Result<String> {
     // 上限防 argon2 计算型 DoS(与 TS 版一致);argon2 对超长输入会全量哈希
     if password.len() > MAX_PASSWORD_LEN {
         return Err(anyhow!("密码过长(上限 {MAX_PASSWORD_LEN} 字符)"));
     }
     let salt = SaltString::generate(&mut PwOsRng);
-    Argon2::default()
+    argon2_instance()
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
         .map_err(|e| anyhow!("argon2 哈希失败: {e}"))
@@ -44,7 +58,7 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
     }
     PasswordHash::new(hash)
         .map(|parsed| {
-            Argon2::default()
+            argon2_instance()
                 .verify_password(password.as_bytes(), &parsed)
                 .is_ok()
         })
