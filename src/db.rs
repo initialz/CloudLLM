@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
 use std::path::Path;
 use std::time::Duration;
@@ -16,6 +16,9 @@ pub async fn open(path: &str) -> Result<SqlitePool> {
         .filename(path)
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
+        // WAL 下 NORMAL 即可保证崩溃不损库(至多丢最后未 checkpoint 的已提交事务),
+        // 较默认 FULL 省去每写一次 fsync——内部网关计费写路径的务实取舍
+        .synchronous(SqliteSynchronous::Normal)
         .busy_timeout(Duration::from_secs(5))
         .foreign_keys(true);
     let pool = SqlitePoolOptions::new()
