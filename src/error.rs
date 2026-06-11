@@ -77,7 +77,12 @@ impl From<JsonRejection> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         if let Some(detail) = &self.detail {
-            tracing::error!(error = %detail, code = self.code, "管理面内部错误");
+            // 仅 5xx 是服务端故障;4xx(如 JSON rejection)是客户端问题,降级记录,避免污染告警
+            if self.status.is_server_error() {
+                tracing::error!(error = %detail, code = self.code, "管理面内部错误");
+            } else {
+                tracing::debug!(error = %detail, code = self.code, "客户端请求被拒");
+            }
         }
         let body = Json(json!({"error": {"code": self.code, "message": self.message}}));
         (self.status, body).into_response()
