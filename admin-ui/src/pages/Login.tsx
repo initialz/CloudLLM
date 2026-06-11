@@ -48,8 +48,11 @@ export default function Login() {
           </div>
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="mb-1 block font-mono text-xs tracking-wider text-dim">EMAIL</label>
+              <label htmlFor="email" className="mb-1 block font-mono text-xs tracking-wider text-[#8b9bb4]">EMAIL</label>
               <input
+                id="email"
+                name="email"
+                autoComplete="username"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -59,8 +62,11 @@ export default function Login() {
               />
             </div>
             <div>
-              <label className="mb-1 block font-mono text-xs tracking-wider text-dim">PASSWORD</label>
+              <label htmlFor="password" className="mb-1 block font-mono text-xs tracking-wider text-[#8b9bb4]">PASSWORD</label>
               <input
+                id="password"
+                name="password"
+                autoComplete="current-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

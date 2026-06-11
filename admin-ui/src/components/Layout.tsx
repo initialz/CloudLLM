@@ -17,8 +17,12 @@ export function Layout() {
   const nav = useNavigate();
 
   async function logout() {
-    await api.logout();
-    nav('/login', { replace: true });
+    try {
+      await api.logout();
+    } finally {
+      // 无论后端结果都离开 UI:cookie 由后端 Max-Age=0 清,请求失败也不该把用户卡在原地
+      nav('/login', { replace: true });
+    }
   }
 
   return (
