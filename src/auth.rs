@@ -32,6 +32,8 @@ pub fn encode_session(data: &SessionData, secret: &str) -> String {
 pub fn decode_session(raw: &str, secret: &str, now: i64) -> Option<SessionData> {
     let (payload, sig) = raw.split_once('.')?;
     let sig_bytes = URL_SAFE_NO_PAD.decode(sig).ok()?;
+    // 解码侧故意全静默(.ok()?):对不可信输入绝不 panic;
+    // 编码侧同调用用 expect——输入是自家结构,失败=程序 bug,应当炸。不对称是有意的。
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).ok()?;
     mac.update(payload.as_bytes());
     mac.verify_slice(&sig_bytes).ok()?; // 常数时间比较
@@ -88,5 +90,28 @@ mod tests {
         assert!(decode_session("", SECRET, 0).is_none());
         assert!(decode_session("no-dot", SECRET, 0).is_none());
         assert!(decode_session("a.b", SECRET, 0).is_none());
+    }
+
+    #[test]
+    fn exp_equal_now_is_expired() {
+        // 到点即失效:exp == now 判过期(严格大于才有效)
+        let raw = encode_session(&session(1_000), SECRET);
+        assert!(decode_session(&raw, SECRET, 1_000).is_none());
+    }
+
+    #[test]
+    fn overlong_garbage_rejected_without_panic() {
+        let huge = "x".repeat(1024 * 1024);
+        assert!(decode_session(&huge, SECRET, 0).is_none());
+        let huge_with_dot = format!("{huge}.{huge}");
+        assert!(decode_session(&huge_with_dot, SECRET, 0).is_none());
+    }
+
+    #[test]
+    fn non_ascii_secret_roundtrip() {
+        let secret = "密钥-非ASCII-秘密-0123456789abcdef!"; // as_bytes() ≥32 字节
+        let raw = encode_session(&session(2_000_000_000), secret);
+        assert!(decode_session(&raw, secret, 0).is_some());
+        assert!(decode_session(&raw, SECRET, 0).is_none());
     }
 }

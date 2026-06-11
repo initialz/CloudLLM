@@ -13,7 +13,7 @@ pub struct Config {
     pub db_path: String,
     /// 渠道凭证信封加密主密钥,base64(32 字节)
     pub master_key: String,
-    /// 管理会话 HMAC 密钥,≥32 字符
+    /// 管理会话 HMAC 密钥,≥32 字节
     pub session_secret: String,
     #[serde(default)]
     pub gateway_public_url: Option<String>,
@@ -81,7 +81,7 @@ impl Config {
         );
         ensure!(
             self.session_secret.len() >= 32,
-            "session_secret 必须 ≥32 字符,实际 {} 字符",
+            "session_secret 必须 ≥32 字节,实际 {} 字节",
             self.session_secret.len()
         );
         self.listen
