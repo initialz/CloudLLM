@@ -13,8 +13,20 @@ fn main() {
 }
 
 fn ensure_placeholder(dist: &Path) {
+    // 恒存的微型探针资产:让 immutable 缓存分支可被确定性测试(真实构建产物存在时也保留)
+    let probe = dist.join("assets/cloudllm-probe-cafebabe.js");
+    if !probe.exists() {
+        std::fs::create_dir_all(dist.join("assets")).expect("创建 dist/assets");
+        std::fs::write(&probe, "// cloudllm probe\n").expect("写探针资产");
+    }
+
     let index = dist.join("index.html");
-    if index.exists() {
+    // 存在但 0 字节(被中断的 npm build 残留)视同缺失,重写占位
+    if index.exists()
+        && std::fs::metadata(&index)
+            .map(|m| m.len() > 0)
+            .unwrap_or(false)
+    {
         return;
     }
     std::fs::create_dir_all(dist.join("assets")).expect("创建 admin-ui/dist/assets");

@@ -25,12 +25,19 @@ pub async fn serve_asset(AxumPath(path): AxumPath<String>) -> Response {
     let key = format!("assets/{path}");
     match Asset::get(&key) {
         Some(f) => file_response(&key, f, "public, max-age=31536000, immutable"),
-        None => serve_index().await,
+        // 内容寻址的哈希资产缺失 = 客户端持有过期 index(stale deploy),
+        // 必须 404 令其硬刷新;回退 HTML 会让 module script MIME 校验失败、整页白屏
+        None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
 /// /admin/* 兜底:先试 dist 根的真实文件(favicon 等),再回退 index.html
 pub async fn serve_spa(AxumPath(path): AxumPath<String>) -> Response {
+    // /admin/api/* 未匹配路径会落到这个 catch-all(它比 nest 的 fallback 更"具体"地
+    // 命中 /admin/*spa),必须仍是 JSON 404,绝不能回退 SPA HTML
+    if path == "api" || path.starts_with("api/") {
+        return crate::error::ApiError::not_found("接口不存在").into_response();
+    }
     match Asset::get(&path) {
         Some(f) => file_response(&path, f, "no-cache"),
         None => serve_index().await,
@@ -42,7 +49,7 @@ fn file_response(path: &str, file: EmbeddedFile, cache: &'static str) -> Respons
     Response::builder()
         .header(header::CONTENT_TYPE, mime)
         .header(header::CACHE_CONTROL, cache)
-        .body(Body::from(file.data.into_owned()))
+        .body(Body::from(file.data))
         .unwrap_or_else(|_| {
             tracing::error!(path, "构造资产响应失败");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -92,9 +99,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn missing_asset_falls_back_to_index() {
+    async fn missing_asset_is_404() {
         let resp = get("/admin/assets/not-built-xyz.js").await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn hashed_asset_hit_is_immutable_js() {
+        let resp = get("/admin/assets/cloudllm-probe-cafebabe.js").await;
         assert_eq!(resp.status(), StatusCode::OK);
+        let cc = resp
+            .headers()
+            .get(header::CACHE_CONTROL)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(cc.contains("immutable"), "实际: {cc}");
+        let ct = resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(ct.contains("javascript"), "实际: {ct}");
     }
 
     #[tokio::test]

@@ -15,6 +15,12 @@ pub fn router() -> Router<AppState> {
         .route("/login", post(login))
         .route("/logout", post(logout))
         .route("/me", get(me))
+        // 未匹配的 /admin/api/* 必须是 JSON 404,不得回退到 SPA HTML
+        .fallback(api_not_found)
+}
+
+async fn api_not_found() -> ApiError {
+    ApiError::not_found("接口不存在")
 }
 
 #[derive(Deserialize)]
@@ -299,6 +305,22 @@ mod tests {
         let resp = login(&state, "", "").await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(body_json(resp).await["error"]["message"], "邮箱或密码错误");
+    }
+
+    #[tokio::test]
+    async fn unknown_api_path_is_json_404() {
+        let state = test_state().await;
+        let resp = app(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/admin/api/does-not-exist")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(body_json(resp).await["error"]["code"], "not_found");
     }
 
     #[tokio::test]
