@@ -23,8 +23,8 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
 }));
 
-// Mock @byok/shared verifyPassword
-vi.mock("@byok/shared", () => ({
+// Mock @cloudllm/shared verifyPassword
+vi.mock("@cloudllm/shared", () => ({
   verifyPassword: vi.fn(),
   hashPassword: vi.fn(),
 }));
@@ -39,7 +39,7 @@ vi.mock("./db", () => ({
 // SESSION_SECRET 由 vitest.config.ts 的 env 注入(在模块加载前设置,满足 auth.ts IIFE 校验)
 
 import { login } from "./auth.js";
-import { verifyPassword } from "@byok/shared";
+import { verifyPassword } from "@cloudllm/shared";
 import { db } from "./db.js";
 
 const mockVerifyPassword = vi.mocked(verifyPassword);

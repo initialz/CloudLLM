@@ -5,18 +5,18 @@
 
 ## 环境启动
 
-1. 迁移+种子:`pnpm --filter @byok/db migrate && pnpm --filter @byok/db seed`
+1. 迁移+种子:`pnpm --filter @cloudllm/db migrate && pnpm --filter @cloudllm/db seed`
 2. 假上游:`node apps/gateway/scripts/fake-upstream.mjs &`
-3. 造数:`export $(grep -v '^#' .env | xargs) && pnpm --filter @byok/gateway e2e-seed`  
+3. 造数:`export $(grep -v '^#' .env | xargs) && pnpm --filter @cloudllm/gateway e2e-seed`  
    输出示例:
    ```
-   e2e Key: sk-wtg-xxxx
+   e2e Key: sk-cloudllm-xxxx
    Key ID: <uuid>
    OpenAI Channel ID: <uuid>
    Anthropic Channel ID: <uuid>
    ```
 4. 设置环境变量:`export KEY=<e2e Key> OPENAI_CHAN=<OpenAI Channel ID> KEY_ID=<Key ID>`
-5. 起网关:`export $(grep -v '^#' .env | xargs) && pnpm --filter @byok/gateway start &`
+5. 起网关:`export $(grep -v '^#' .env | xargs) && pnpm --filter @cloudllm/gateway start &`
 
 ## 验收清单
 
@@ -75,7 +75,7 @@
 - [x] 错误 Key → 401
   ```bash
   curl -s -w "\nHTTP: %{http_code}" localhost:8080/v1/chat/completions \
-    -H "Authorization: Bearer sk-wtg-INVALID_KEY" \
+    -H "Authorization: Bearer sk-cloudllm-INVALID_KEY" \
     -H 'content-type: application/json' \
     -d '{"model":"openai/gpt-e2e","messages":[]}'
   # 预期: HTTP 401 {"error":{"code":"invalid_api_key",...}}
@@ -110,7 +110,7 @@ kill $(lsof -ti tcp:8080) 2>/dev/null  # gateway
 
 ```bash
 # 确保 audit_enabled=true(使 gateway 在事件中携带 audit 字段)
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "UPDATE api_keys SET audit_enabled=true WHERE id='$KEY_ID';"
 
 # 启动 worker
@@ -141,17 +141,17 @@ curl -s localhost:8080/v1/messages \
 
 ```bash
 # usage_records:event_id 非空、costCny 正确
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "SELECT model_slug, cost_cny, event_id, status FROM usage_records WHERE key_id='$KEY_ID' ORDER BY created_at DESC LIMIT 5;"
 # 预期: openai/gpt-e2e → cost_cny=0.007350; anthropic/claude-e2e → cost_cny=0.005880; event_id 非空
 
 # ledger_entries:key + user 两层各一条
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "SELECT le.subject_type, le.amount_cny FROM ledger_entries le JOIN usage_records ur ON le.usage_record_id=ur.id WHERE ur.key_id='$KEY_ID' ORDER BY le.subject_type;"
 # 预期: key/0.007350、key/0.005880、user/0.007350、user/0.005880
 
 # budgets.used_amount_cny 累加
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "SELECT used_amount_cny, limit_amount_cny FROM budgets WHERE subject_id='$KEY_ID';"
 # 预期: used_amount_cny >= 0.013230 (0.007350+0.005880)
 ```
@@ -185,7 +185,7 @@ redis-cli -a "<REDIS_PASSWORD>" --no-auth-warning GET "bal:key:$KEY_ID"
 ### 验收项 5:request_logs 审计行(含过期时间)
 
 ```bash
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "SELECT rl.id, rl.expires_at, (rl.expires_at - now()) AS ttl FROM request_logs rl JOIN usage_records ur ON rl.usage_record_id=ur.id WHERE ur.key_id='$KEY_ID';"
 # 预期: 2 行;expires_at = 调用时刻 + 30d;ttl ≈ 29d 23h
 ```
@@ -305,17 +305,17 @@ GATEWAY_PORT=18080 CONSOLE_PORT=13000 \
 
 **注意**：部署过程中 postgres 数据卷已有旧密码，手动执行：
 ```sql
-ALTER USER byok WITH PASSWORD '<POSTGRES_PASSWORD from .env>';
+ALTER USER cloudllm WITH PASSWORD '<POSTGRES_PASSWORD from .env>';
 ```
 之后 migrate 正常完成（`数据库迁移完成`）。
 
 **最终容器状态**：
 ```
-byok-console-1    Up                   0.0.0.0:13000->3000/tcp
-byok-worker-1     Up
-byok-gateway-1    Up                   0.0.0.0:18080->8080/tcp
-byok-postgres-1   Up (healthy)         0.0.0.0:15432->5432/tcp
-byok-redis-1      Up (healthy)
+cloudllm-console-1    Up                   0.0.0.0:13000->3000/tcp
+cloudllm-worker-1     Up
+cloudllm-gateway-1    Up                   0.0.0.0:18080->8080/tcp
+cloudllm-postgres-1   Up (healthy)         0.0.0.0:15432->5432/tcp
+cloudllm-redis-1      Up (healthy)
 ```
 
 ### Step 1：Seed — 管理员创建
@@ -325,8 +325,8 @@ cd deploy
 docker compose -f docker-compose.prod.yml -f docker-compose.acceptance.yml --env-file .env \
   run --rm \
   -e SEED_ADMIN_EMAIL=admin@example.com \
-  -e SEED_ADMIN_PASSWORD='Byok@Admin2024!' \
-  worker node node_modules/@byok/db/dist/seed.js
+  -e SEED_ADMIN_PASSWORD='CloudLLM@Admin2024!' \
+  worker node node_modules/@cloudllm/db/dist/seed.js
 # 实测输出：seed 完成:admin = admin@example.com  ✓
 ```
 
@@ -337,14 +337,14 @@ docker compose -f docker-compose.prod.yml -f docker-compose.acceptance.yml --env
 ```bash
 # 脚本 deploy/docker-compose.acceptance.yml 说明见文件注释
 # 将 p4-e2e-seed.mjs 复制进 worker 容器运行
-docker cp apps/gateway/scripts/e2e-seed-prod.mjs byok-worker-1:/app/p4-e2e-seed.mjs
+docker cp apps/gateway/scripts/e2e-seed-prod.mjs cloudllm-worker-1:/app/p4-e2e-seed.mjs
 docker exec -e DATABASE_URL="<DATABASE_URL>" -e MASTER_KEY="<MASTER_KEY>" \
-  byok-worker-1 node /app/p4-e2e-seed.mjs
+  cloudllm-worker-1 node /app/p4-e2e-seed.mjs
 ```
 
 **实测输出**：
 ```
-e2e Key: sk-wtg-CpyynsSHJULCs2uLmxhuhO9GtNmJULyY
+e2e Key: sk-cloudllm-CpyynsSHJULCs2uLmxhuhO9GtNmJULyY
 Key ID: fc0d013b-7ded-4d7f-be26-e5940fdb12bd
 OpenAI Channel ID: a7784cfd-4516-424b-9e69-4897687ed81c
 Anthropic Channel ID: 660a2242-6323-4ae5-8ad9-16095dc20383
@@ -353,12 +353,12 @@ Anthropic Channel ID: 660a2242-6323-4ae5-8ad9-16095dc20383
 创建内容：
 - 渠道 `p4-e2e-openai` / `p4-e2e-anthropic`（baseUrl=`http://host.docker.internal:9100/v1`）
 - 模型 `openai/gpt-p4e2e` / `anthropic/claude-p4e2e`（priceInput=21, priceOutput=105 per-million）
-- Key `sk-wtg-CpyynsSHJULCs2uLmxhuhO9GtNmJULyY`（0.05 CNY total 预算）
+- Key `sk-cloudllm-CpyynsSHJULCs2uLmxhuhO9GtNmJULyY`（0.05 CNY total 预算）
 
 ### Step 3：网关调用验证
 
 ```bash
-KEY=sk-wtg-CpyynsSHJULCs2uLmxhuhO9GtNmJULyY
+KEY=sk-cloudllm-CpyynsSHJULCs2uLmxhuhO9GtNmJULyY
 
 # OpenAI 非流式
 curl -s http://localhost:18080/v1/chat/completions \
@@ -390,7 +390,7 @@ curl -s http://localhost:18080/v1/chat/completions \
 KEY_ID=fc0d013b-7ded-4d7f-be26-e5940fdb12bd
 
 # usage_records
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "SELECT model_slug, cost_cny, event_id IS NOT NULL as has_event_id, status FROM usage_records WHERE key_id='$KEY_ID' ORDER BY created_at DESC LIMIT 5;"
 ```
 
@@ -405,7 +405,7 @@ docker exec byok-postgres-1 psql -U byok -d byok \
 
 ```bash
 # ledger_entries（key + user 两层）
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "SELECT le.subject_type, le.amount_cny FROM ledger_entries le JOIN usage_records ur ON le.usage_record_id=ur.id WHERE ur.key_id='$KEY_ID' ORDER BY le.created_at DESC LIMIT 8;"
 ```
 
@@ -423,7 +423,7 @@ docker exec byok-postgres-1 psql -U byok -d byok \
 
 ```bash
 # budgets 预算累加
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "SELECT used_amount_cny, limit_amount_cny FROM budgets WHERE subject_id='$KEY_ID';"
 ```
 
@@ -443,12 +443,12 @@ docker exec byok-postgres-1 psql -U byok -d byok \
 # OpenAI流式:  20*21/1e6 + 4*105/1e6   = 0.000840 CNY
 # total = 0.014070 CNY
 
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "SELECT COUNT(*) as record_count, SUM(cost_cny) as total_cost FROM usage_records WHERE key_id='$KEY_ID';"
 # 实测：record_count=3, total_cost=0.014070  ✓
 
 # Redis bal 键校正（worker SET 后精确值）
-docker exec byok-redis-1 redis-cli GET "bal:key:$KEY_ID"
+docker exec cloudllm-redis-1 redis-cli GET "bal:key:$KEY_ID"
 # 实测：35930（= 50000 - 14070 micro-CNY，精确匹配 PG）  ✓
 ```
 
@@ -456,7 +456,7 @@ docker exec byok-redis-1 redis-cli GET "bal:key:$KEY_ID"
 
 ```bash
 # 开启审计
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "UPDATE api_keys SET audit_enabled=true WHERE id='$KEY_ID';"
 # 实测：UPDATE 1
 
@@ -468,7 +468,7 @@ curl -s http://localhost:18080/v1/chat/completions \
 # 实测：{"id":"fake-openai","model":"fake-real-model","usage":{"prompt_tokens":100,"completion_tokens":50}}
 
 # 验证 request_logs
-docker exec byok-postgres-1 psql -U byok -d byok \
+docker exec cloudllm-postgres-1 psql -U cloudllm -d cloudllm \
   -c "SELECT rl.id, rl.expires_at::date, (rl.expires_at - now()) AS ttl FROM request_logs rl JOIN usage_records ur ON rl.usage_record_id=ur.id WHERE ur.key_id='$KEY_ID' ORDER BY rl.created_at DESC LIMIT 3;"
 ```
 
@@ -519,22 +519,22 @@ curl -s -o /dev/null -w "HTTP: %{http_code}\n" http://localhost:13000/login
 curl -s -o /dev/null -w "HTTP: %{http_code}  redirect: %{redirect_url}\n" http://localhost:13000/
 # 实测：HTTP: 307  redirect: http://localhost:13000/login  ✓
 
-# 页面内容包含 BYOK/登录关键词
-curl -s http://localhost:13000/login | grep -o 'BYOK\|登录' | head -3
-# 实测：BYOK, BYOK, 登录  ✓
+# 页面内容包含 CloudLLM/登录关键词
+curl -s http://localhost:13000/login | grep -o 'CloudLLM\|登录' | head -3
+# 实测：CloudLLM, CloudLLM, 登录  ✓
 ```
 
 ### Step 9：收尾
 
 ```bash
 # Worker XPENDING = 0（全部 ack）
-docker exec byok-redis-1 redis-cli XPENDING usage_events console-worker
+docker exec cloudllm-redis-1 redis-cli XPENDING usage_events console-worker
 # 实测：0  ✓
 
 # 停栈（保留 volumes）
 cd deploy
 docker compose -f docker-compose.prod.yml -f docker-compose.acceptance.yml --env-file .env down
-# 实测：所有容器正常停止并删除，网络删除；volumes byok_pgdata / byok_redisdata 保留
+# 实测：所有容器正常停止并删除，网络删除；volumes cloudllm_pgdata / cloudllm_redisdata 保留
 
 # 杀 fake-upstream
 kill $(lsof -ti tcp:9100) 2>/dev/null
@@ -571,7 +571,7 @@ pnpm build
 | Step 5 | 报表数据：SUM=0.014070 CNY，bal=35930 micro，与 PG 精确一致 | ✓ |
 | Step 6 | 审计：audit_enabled→request_logs 1 行，TTL=30d | ✓ |
 | Step 7 | 预算耗尽：第 5 次调用触发 429 budget_exhausted | ✓ |
-| Step 8 | Console：/login 200、/ → 307、页面含 BYOK/登录 | ✓ |
+| Step 8 | Console：/login 200、/ → 307、页面含 CloudLLM/登录 | ✓ |
 | Step 9 | compose down（volumes 保留）、fake-upstream 清理、build/typecheck 全绿 | ✓ |
 
 **全链路验收通过**。

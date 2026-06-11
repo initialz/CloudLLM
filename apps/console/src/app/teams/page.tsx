@@ -1,4 +1,4 @@
-import { teams } from "@byok/db";
+import { teams } from "@cloudllm/db";
 import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 import TeamsClient from "./teams-client";

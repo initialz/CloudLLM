@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { channels, type Db } from "@byok/db";
-import { encryptSecret } from "@byok/shared";
+import { channels, type Db } from "@cloudllm/db";
+import { encryptSecret } from "@cloudllm/shared";
 
 // 注:MASTER_KEY 的校验在 app/admin/channels/actions.ts 的 getMasterKey() 中惰性进行
 // (请求时校验)。本模块不在导入时读取 MASTER_KEY——否则 `next build` 静态分析

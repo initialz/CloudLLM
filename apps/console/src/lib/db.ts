@@ -1,17 +1,17 @@
-import { createDb, type Db } from "@byok/db";
+import { createDb, type Db } from "@cloudllm/db";
 
 // Next.js dev 热重载时模块会被重新执行,用 globalThis 缓存单例防连接泄漏
 declare global {
   // eslint-disable-next-line no-var
-  var __byokDb: Db | undefined;
+  var __cloudllmDb: Db | undefined;
 }
 
 function getDb(): Db {
-  if (globalThis.__byokDb) return globalThis.__byokDb;
+  if (globalThis.__cloudllmDb) return globalThis.__cloudllmDb;
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL 未设置");
   const { db } = createDb(url);
-  globalThis.__byokDb = db;
+  globalThis.__cloudllmDb = db;
   return db;
 }
 

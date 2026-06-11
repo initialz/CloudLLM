@@ -1,4 +1,4 @@
-import { decryptSecret } from "@byok/shared";
+import { decryptSecret } from "@cloudllm/shared";
 import type { ChannelChoice, CooldownStore, Protocol, UsageTotals } from "./types.js";
 import { SseUsageTap, extractUsageFromJson } from "./usage.js";
 

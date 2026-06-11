@@ -1,5 +1,5 @@
 {
-  "name": "@byok/db",
+  "name": "@cloudllm/db",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,10 +11,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
-    "seed": "pnpm --filter @byok/shared build && tsc -p tsconfig.json && node dist/seed.js"
+    "seed": "pnpm --filter @cloudllm/shared build && tsc -p tsconfig.json && node dist/seed.js"
   },
   "dependencies": {
-    "@byok/shared": "workspace:*",
+    "@cloudllm/shared": "workspace:*",
     "drizzle-orm": "^0.44.2",
     "postgres": "^3.4.7"
   },

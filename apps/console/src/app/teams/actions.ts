@@ -2,7 +2,7 @@
 
 import { and, count, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { apps, teamMembers, teams, users } from "@byok/db";
+import { apps, teamMembers, teams, users } from "@cloudllm/db";
 import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 

@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import { apiKeys, requestLogs, usageRecords, type Db } from "@byok/db";
+import { apiKeys, requestLogs, usageRecords, type Db } from "@cloudllm/db";
 
 export interface UsageFilter {
   from: Date;

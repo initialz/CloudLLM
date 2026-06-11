@@ -1,4 +1,4 @@
-import { generateApiKey } from "@byok/shared";
+import { generateApiKey } from "@cloudllm/shared";
 import { describe, expect, it } from "vitest";
 import { authenticate } from "./auth.js";
 import type { AuthedKey, KeyRepo } from "./types.js";
@@ -27,14 +27,14 @@ describe("authenticate", () => {
     expect(r).toEqual({ ok: true, key: KEY });
   });
 
-  it("缺失或非 sk-wtg- 前缀返回 401", async () => {
+  it("缺失或非 sk-cloudllm- 前缀返回 401", async () => {
     expect((await authenticate(repoWith(null), undefined, "m")).ok).toBe(false);
     const r = await authenticate(repoWith(null), "sk-other-xxx", "m");
     expect(r).toMatchObject({ ok: false, status: 401, code: "invalid_api_key" });
   });
 
   it("查不到(无效/停用/过期)返回 401", async () => {
-    const r = await authenticate(repoWith(null), "sk-wtg-notexist", "m");
+    const r = await authenticate(repoWith(null), "sk-cloudllm-notexist", "m");
     expect(r).toMatchObject({ ok: false, status: 401 });
   });
 

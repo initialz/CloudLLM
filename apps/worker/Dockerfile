@@ -12,15 +12,15 @@ COPY apps/worker ./apps/worker
 
 # 安装依赖 → 构建 → pnpm deploy 裁剪生产产物
 # pnpm@10 需要 --legacy 标志才能部署 workspace 依赖
-RUN pnpm install --frozen-lockfile --filter @byok/worker... \
- && pnpm --filter @byok/shared build \
- && pnpm --filter @byok/db build \
- && pnpm --filter @byok/worker build \
- && pnpm --filter @byok/worker --prod deploy --legacy /out
+RUN pnpm install --frozen-lockfile --filter @cloudllm/worker... \
+ && pnpm --filter @cloudllm/shared build \
+ && pnpm --filter @cloudllm/db build \
+ && pnpm --filter @cloudllm/worker build \
+ && pnpm --filter @cloudllm/worker --prod deploy --legacy /out
 
 # 把 migrations 目录拷入 /out，供 migrate 服务使用
-# pnpm deploy 后 @byok/db 在 /out/node_modules/@byok/db
-RUN cp -r /app/packages/db/migrations /out/node_modules/@byok/db/migrations
+# pnpm deploy 后 @cloudllm/db 在 /out/node_modules/@cloudllm/db
+RUN cp -r /app/packages/db/migrations /out/node_modules/@cloudllm/db/migrations
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM node:22-alpine

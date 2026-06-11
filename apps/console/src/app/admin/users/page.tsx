@@ -1,6 +1,6 @@
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
-import { users } from "@byok/db";
+import { users } from "@cloudllm/db";
 import { asc } from "drizzle-orm";
 import UsersClient from "./users-client";
 

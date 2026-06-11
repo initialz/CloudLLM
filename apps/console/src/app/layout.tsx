@@ -6,11 +6,11 @@ import "./globals.css";
 import { logoutAction } from "./logout-action";
 import { decodeSession } from "../lib/session";
 import { db } from "../lib/db";
-import { users } from "@byok/db";
+import { users } from "@cloudllm/db";
 
 export const metadata: Metadata = {
-  title: "BYOK Console",
-  description: "BYOK 管理后台",
+  title: "CloudLLM Console",
+  description: "CloudLLM 管理后台",
 };
 
 /** 从 cookie 读取当前会话(layout 内用,无效不 redirect——由 middleware 处理)
@@ -20,7 +20,7 @@ async function getCurrentSession() {
   const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 32) return null;
   const cookieStore = await cookies();
-  const raw = cookieStore.get("byok_session")?.value;
+  const raw = cookieStore.get("cloudllm_session")?.value;
   return decodeSession(raw, secret);
 }
 
@@ -68,7 +68,7 @@ export default async function RootLayout({
           {/* 左侧导航 */}
           <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col">
             <div className="h-14 flex items-center px-4 border-b border-gray-200">
-              <span className="font-bold text-lg text-blue-600">BYOK</span>
+              <span className="font-bold text-lg text-blue-600">CloudLLM</span>
             </div>
 
             {/* v1.1: 统一管理员导航——所有入口对管理员可见 */}

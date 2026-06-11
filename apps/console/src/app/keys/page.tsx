@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { apiKeys, models, users, teams } from "@byok/db";
+import { apiKeys, models, users, teams } from "@cloudllm/db";
 import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 import KeysClient from "./keys-client";

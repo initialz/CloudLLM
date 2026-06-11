@@ -1,29 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: byok-gateway
-  namespace: byok
+  name: cloudllm-gateway
+  namespace: cloudllm
   labels:
-    app.kubernetes.io/name: byok-gateway
-    app.kubernetes.io/part-of: byok
+    app.kubernetes.io/name: cloudllm-gateway
+    app.kubernetes.io/part-of: cloudllm
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app.kubernetes.io/name: byok-gateway
+      app.kubernetes.io/name: cloudllm-gateway
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: byok-gateway
-        app.kubernetes.io/part-of: byok
+        app.kubernetes.io/name: cloudllm-gateway
+        app.kubernetes.io/part-of: cloudllm
     spec:
       # 优雅停机：preStop 5s + 应用 25s 硬超时，留 5s 余量，总宽限 35s
       terminationGracePeriodSeconds: 35
       containers:
         - name: gateway
           # 替换 <registry> 和 <tag> 为实际镜像地址；tag 推荐使用 git commit SHA
-          # 示例：registry.company.com/byok/byok-gateway:v1.2.0-abc1234
-          image: <registry>/byok-gateway:<tag>
+          # 示例：registry.company.com/cloudllm/cloudllm-gateway:v1.2.0-abc1234
+          image: <registry>/cloudllm-gateway:<tag>
           ports:
             - containerPort: 8080
               protocol: TCP
@@ -31,17 +31,17 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: byok-secrets
+                  name: cloudllm-secrets
                   key: DATABASE_URL
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
-                  name: byok-secrets
+                  name: cloudllm-secrets
                   key: REDIS_URL
             - name: MASTER_KEY
               valueFrom:
                 secretKeyRef:
-                  name: byok-secrets
+                  name: cloudllm-secrets
                   key: MASTER_KEY
           resources:
             requests:
@@ -74,14 +74,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: byok-gateway
-  namespace: byok
+  name: cloudllm-gateway
+  namespace: cloudllm
   labels:
-    app.kubernetes.io/name: byok-gateway
-    app.kubernetes.io/part-of: byok
+    app.kubernetes.io/name: cloudllm-gateway
+    app.kubernetes.io/part-of: cloudllm
 spec:
   selector:
-    app.kubernetes.io/name: byok-gateway
+    app.kubernetes.io/name: cloudllm-gateway
   ports:
     - name: http
       port: 80

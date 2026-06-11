@@ -2,17 +2,17 @@
  * reports.test.ts — 真 PG 集成测试 (3 用例)
  *
  * 运行前提:本地 PG 已起,DATABASE_URL 已设置
- * 默认:postgres://byok:byok_dev@localhost:5432/byok
+ * 默认:postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { apiKeys, usageRecords } from "@byok/db";
-import { createDb, type Db } from "@byok/db";
+import { apiKeys, usageRecords } from "@cloudllm/db";
+import { createDb, type Db } from "@cloudllm/db";
 import { eq, inArray } from "drizzle-orm";
 import { aggregateUsage, visibleKeyIds } from "./reports.js";
 
 const DATABASE_URL =
-  process.env.DATABASE_URL ?? "postgres://byok:byok_dev@localhost:5432/byok";
+  process.env.DATABASE_URL ?? "postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm";
 
 let db: Db;
 let sql: { end: () => Promise<void> };

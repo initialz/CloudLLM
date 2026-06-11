@@ -1,6 +1,6 @@
-# BYOK K8s 生产部署计划
+# CloudLLM K8s 生产部署计划
 
-本文档描述将 BYOK 网关系统部署到 Kubernetes 的完整流程。
+本文档描述将 CloudLLM 网关系统部署到 Kubernetes 的完整流程。
 
 > 如果部署规模较小（单机或少量节点），推荐使用 [Docker Compose 方案](../docker-compose.prod.yml)，运维门槛更低。K8s 方案适合需要高可用、水平扩缩容、多节点部署的场景。
 
@@ -25,7 +25,7 @@
 
 ```
 deploy/k8s/
-├── namespace.yaml          # Namespace: byok
+├── namespace.yaml          # Namespace: cloudllm
 ├── migrate-job.yaml        # 数据库迁移 Job（每次升级前单独运行）
 ├── gateway.yaml            # Gateway Deployment（3 副本）+ Service
 ├── worker.yaml             # Worker Deployment（1 副本，可扩）
@@ -41,16 +41,16 @@ deploy/k8s/
 
 ### 镜像占位符说明
 
-所有 Deployment 中的 `image` 字段使用 `<registry>/byok-<service>:<tag>` 占位符，
+所有 Deployment 中的 `image` 字段使用 `<registry>/cloudllm-<service>:<tag>` 占位符，
 **apply 前必须替换为实际镜像地址**。推荐使用 `sed` 或 `kustomize` 批量替换：
 
 ```bash
 # 示例：用 sed 替换占位符后 apply
 TAG=v1.2.0-$(git rev-parse --short HEAD)
-REGISTRY=registry.company.com/byok
+REGISTRY=registry.company.com/cloudllm
 
 for f in gateway worker console; do
-  sed "s|<registry>/byok-${f}:<tag>|${REGISTRY}/byok-${f}:${TAG}|g" \
+  sed "s|<registry>/cloudllm-${f}:<tag>|${REGISTRY}/cloudllm-${f}:${TAG}|g" \
     deploy/k8s/${f}.yaml | kubectl apply -f -
 done
 ```
@@ -84,22 +84,22 @@ done
 ```bash
 # 在 repo 根目录执行
 TAG="v1.2.0-$(git rev-parse --short HEAD)"
-REGISTRY="registry.company.com/byok"   # 替换为公司实际 registry
+REGISTRY="registry.company.com/cloudllm"   # 替换为公司实际 registry
 
 # 构建三个镜像（使用各自 Dockerfile，context 均为 repo 根）
-docker build -f apps/gateway/Dockerfile  -t ${REGISTRY}/byok-gateway:${TAG}  .
-docker build -f apps/worker/Dockerfile   -t ${REGISTRY}/byok-worker:${TAG}   .
-docker build -f apps/console/Dockerfile  -t ${REGISTRY}/byok-console:${TAG}  .
+docker build -f apps/gateway/Dockerfile  -t ${REGISTRY}/cloudllm-gateway:${TAG}  .
+docker build -f apps/worker/Dockerfile   -t ${REGISTRY}/cloudllm-worker:${TAG}   .
+docker build -f apps/console/Dockerfile  -t ${REGISTRY}/cloudllm-console:${TAG}  .
 
 # 同时打 latest 标签（可选）
-docker tag ${REGISTRY}/byok-gateway:${TAG} ${REGISTRY}/byok-gateway:latest
-docker tag ${REGISTRY}/byok-worker:${TAG}  ${REGISTRY}/byok-worker:latest
-docker tag ${REGISTRY}/byok-console:${TAG} ${REGISTRY}/byok-console:latest
+docker tag ${REGISTRY}/cloudllm-gateway:${TAG} ${REGISTRY}/cloudllm-gateway:latest
+docker tag ${REGISTRY}/cloudllm-worker:${TAG}  ${REGISTRY}/cloudllm-worker:latest
+docker tag ${REGISTRY}/cloudllm-console:${TAG} ${REGISTRY}/cloudllm-console:latest
 
 # 推送到 registry
-docker push ${REGISTRY}/byok-gateway:${TAG}
-docker push ${REGISTRY}/byok-worker:${TAG}
-docker push ${REGISTRY}/byok-console:${TAG}
+docker push ${REGISTRY}/cloudllm-gateway:${TAG}
+docker push ${REGISTRY}/cloudllm-worker:${TAG}
+docker push ${REGISTRY}/cloudllm-console:${TAG}
 ```
 
 ### CI/CD 集成建议
@@ -125,10 +125,10 @@ Secret 中包含 PG 连接串、Redis 连接串、信封加密主密钥和会话
 brew install kubeseal
 
 # 创建临时明文 Secret（不 apply 到集群）
-kubectl create secret generic byok-secrets \
-  --namespace=byok \
+kubectl create secret generic cloudllm-secrets \
+  --namespace=cloudllm \
   --dry-run=client \
-  --from-literal=DATABASE_URL='postgres://byok:PASSWORD@pg-host:5432/byok' \
+  --from-literal=DATABASE_URL='postgres://cloudllm:PASSWORD@pg-host:5432/cloudllm' \
   --from-literal=REDIS_URL='redis://:PASSWORD@redis-host:6379' \
   --from-literal=MASTER_KEY="$(openssl rand -base64 32)" \
   --from-literal=SESSION_SECRET="$(openssl rand -hex 32)" \
@@ -157,9 +157,9 @@ sops --decrypt deploy/k8s/secrets-encrypted.yaml | kubectl apply -f -
 ### 方案 C：直接 kubectl（适合快速测试，不推荐生产）
 
 ```bash
-kubectl create secret generic byok-secrets \
-  --namespace=byok \
-  --from-literal=DATABASE_URL='postgres://byok:YOUR_PASSWORD@your-pg-host:5432/byok' \
+kubectl create secret generic cloudllm-secrets \
+  --namespace=cloudllm \
+  --from-literal=DATABASE_URL='postgres://cloudllm:YOUR_PASSWORD@your-pg-host:5432/cloudllm' \
   --from-literal=REDIS_URL='redis://:YOUR_PASSWORD@your-redis-host:6379' \
   --from-literal=MASTER_KEY="$(openssl rand -base64 32)" \
   --from-literal=SESSION_SECRET="$(openssl rand -hex 32)"
@@ -182,11 +182,11 @@ kubectl apply -f deploy/k8s/namespace.yaml
 
 ### 5.2 创建 Secret
 
-按[第 4 节](#4-前置准备创建-secret)选择方案创建 `byok-secrets`。
+按[第 4 节](#4-前置准备创建-secret)选择方案创建 `cloudllm-secrets`。
 
 验证：
 ```bash
-kubectl get secret byok-secrets -n byok
+kubectl get secret cloudllm-secrets -n cloudllm
 ```
 
 ### 5.3 运行数据库迁移 Job
@@ -196,39 +196,39 @@ kubectl get secret byok-secrets -n byok
 ```bash
 # 替换镜像占位符后 apply
 TAG="v1.2.0-$(git rev-parse --short HEAD)"
-REGISTRY="registry.company.com/byok"
-sed "s|<registry>/byok-worker:<tag>|${REGISTRY}/byok-worker:${TAG}|g" \
+REGISTRY="registry.company.com/cloudllm"
+sed "s|<registry>/cloudllm-worker:<tag>|${REGISTRY}/cloudllm-worker:${TAG}|g" \
   deploy/k8s/migrate-job.yaml | kubectl apply -f -
 
 # 等待 Job 完成（超时 5 分钟）
-kubectl wait job/byok-migrate \
-  --namespace=byok \
+kubectl wait job/cloudllm-migrate \
+  --namespace=cloudllm \
   --for=condition=complete \
   --timeout=300s
 # Job 失败时该命令会等满超时；可另开终端执行
-# kubectl wait job/byok-migrate -n byok --for=condition=failed --timeout=300s
-# 或直接查看状态：kubectl get job byok-migrate -n byok -o wide
-# 以及查看日志：kubectl logs job/byok-migrate -n byok
+# kubectl wait job/cloudllm-migrate -n cloudllm --for=condition=failed --timeout=300s
+# 或直接查看状态：kubectl get job cloudllm-migrate -n cloudllm -o wide
+# 以及查看日志：kubectl logs job/cloudllm-migrate -n cloudllm
 
 # 查看日志确认无错误
-kubectl logs -n byok -l app.kubernetes.io/name=byok-migrate
+kubectl logs -n cloudllm -l app.kubernetes.io/name=cloudllm-migrate
 ```
 
 ### 5.4 部署三个 Deployment
 
 ```bash
 TAG="v1.2.0-$(git rev-parse --short HEAD)"
-REGISTRY="registry.company.com/byok"
+REGISTRY="registry.company.com/cloudllm"
 
 for svc in gateway worker console; do
-  sed "s|<registry>/byok-${svc}:<tag>|${REGISTRY}/byok-${svc}:${TAG}|g" \
+  sed "s|<registry>/cloudllm-${svc}:<tag>|${REGISTRY}/cloudllm-${svc}:${TAG}|g" \
     deploy/k8s/${svc}.yaml | kubectl apply -f -
 done
 
 # 等待所有 Deployment rollout 完成
-kubectl rollout status deployment/byok-gateway -n byok --timeout=300s
-kubectl rollout status deployment/byok-worker  -n byok --timeout=300s
-kubectl rollout status deployment/byok-console -n byok --timeout=300s
+kubectl rollout status deployment/cloudllm-gateway -n cloudllm --timeout=300s
+kubectl rollout status deployment/cloudllm-worker  -n cloudllm --timeout=300s
+kubectl rollout status deployment/cloudllm-console -n cloudllm --timeout=300s
 ```
 
 ### 5.5 部署 Ingress
@@ -256,11 +256,11 @@ kubectl apply -f - <<'EOF'
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: byok-seed
-  namespace: byok
+  name: cloudllm-seed
+  namespace: cloudllm
   labels:
-    app.kubernetes.io/name: byok-seed
-    app.kubernetes.io/part-of: byok
+    app.kubernetes.io/name: cloudllm-seed
+    app.kubernetes.io/part-of: cloudllm
 spec:
   ttlSecondsAfterFinished: 600
   template:
@@ -268,11 +268,11 @@ spec:
       restartPolicy: Never
       containers:
         - name: seed
-          image: <registry>/byok-worker:<tag>
-          command: ["node", "node_modules/@byok/db/dist/seed.js"]
+          image: <registry>/cloudllm-worker:<tag>
+          command: ["node", "node_modules/@cloudllm/db/dist/seed.js"]
           envFrom:
             - secretRef:
-                name: byok-secrets
+                name: cloudllm-secrets
           env:
             - name: SEED_ADMIN_EMAIL
               value: "admin@yourcompany.com"   # 改为实际管理员邮箱
@@ -281,22 +281,22 @@ spec:
 EOF
 ```
 
-seed Job 完成后可通过 `kubectl logs -n byok job/byok-seed` 确认执行结果；
+seed Job 完成后可通过 `kubectl logs -n cloudllm job/cloudllm-seed` 确认执行结果；
 600 秒后 Job 自动清理（`ttlSecondsAfterFinished: 600`）。
 
 ### 5.7 验证部署
 
 ```bash
 # 检查所有 Pod 状态（期望全部 Running）
-kubectl get pods -n byok
+kubectl get pods -n cloudllm
 
 # 检查 gateway healthz（通过 port-forward）
-kubectl port-forward svc/byok-gateway 8080:80 -n byok &
+kubectl port-forward svc/cloudllm-gateway 8080:80 -n cloudllm &
 curl localhost:8080/healthz   # 期望 {"ok":true}
 kill %1
 
 # 检查 console 登录页（通过 port-forward）
-kubectl port-forward svc/byok-console 3000:80 -n byok &
+kubectl port-forward svc/cloudllm-console 3000:80 -n cloudllm &
 curl -I localhost:3000/login   # 期望 200
 kill %1
 ```
@@ -309,35 +309,35 @@ kill %1
 
 ```bash
 NEW_TAG="v1.3.0-$(git rev-parse --short HEAD)"
-REGISTRY="registry.company.com/byok"
+REGISTRY="registry.company.com/cloudllm"
 
 # 步骤 1：构建并推送新镜像
-docker build -f apps/gateway/Dockerfile  -t ${REGISTRY}/byok-gateway:${NEW_TAG}  .
-docker build -f apps/worker/Dockerfile   -t ${REGISTRY}/byok-worker:${NEW_TAG}   .
-docker build -f apps/console/Dockerfile  -t ${REGISTRY}/byok-console:${NEW_TAG}  .
-docker push ${REGISTRY}/byok-gateway:${NEW_TAG}
-docker push ${REGISTRY}/byok-worker:${NEW_TAG}
-docker push ${REGISTRY}/byok-console:${NEW_TAG}
+docker build -f apps/gateway/Dockerfile  -t ${REGISTRY}/cloudllm-gateway:${NEW_TAG}  .
+docker build -f apps/worker/Dockerfile   -t ${REGISTRY}/cloudllm-worker:${NEW_TAG}   .
+docker build -f apps/console/Dockerfile  -t ${REGISTRY}/cloudllm-console:${NEW_TAG}  .
+docker push ${REGISTRY}/cloudllm-gateway:${NEW_TAG}
+docker push ${REGISTRY}/cloudllm-worker:${NEW_TAG}
+docker push ${REGISTRY}/cloudllm-console:${NEW_TAG}
 
 # 步骤 2：删除旧的 migrate Job 并运行新版本迁移
-kubectl delete job byok-migrate -n byok --ignore-not-found
-sed "s|<registry>/byok-worker:<tag>|${REGISTRY}/byok-worker:${NEW_TAG}|g" \
+kubectl delete job cloudllm-migrate -n cloudllm --ignore-not-found
+sed "s|<registry>/cloudllm-worker:<tag>|${REGISTRY}/cloudllm-worker:${NEW_TAG}|g" \
   deploy/k8s/migrate-job.yaml | kubectl apply -f -
-kubectl wait job/byok-migrate --namespace=byok --for=condition=complete --timeout=300s
+kubectl wait job/cloudllm-migrate --namespace=cloudllm --for=condition=complete --timeout=300s
 # Job 失败时该命令会等满超时；可另开终端执行
-# kubectl wait job/byok-migrate -n byok --for=condition=failed --timeout=300s
-# 或直接查看状态：kubectl get job byok-migrate -n byok -o wide
-# 以及查看日志：kubectl logs job/byok-migrate -n byok
+# kubectl wait job/cloudllm-migrate -n cloudllm --for=condition=failed --timeout=300s
+# 或直接查看状态：kubectl get job cloudllm-migrate -n cloudllm -o wide
+# 以及查看日志：kubectl logs job/cloudllm-migrate -n cloudllm
 
 # 步骤 3：滚动更新三个 Deployment（零停机）
-kubectl set image deployment/byok-gateway gateway=${REGISTRY}/byok-gateway:${NEW_TAG} -n byok
-kubectl set image deployment/byok-worker  worker=${REGISTRY}/byok-worker:${NEW_TAG}  -n byok
-kubectl set image deployment/byok-console console=${REGISTRY}/byok-console:${NEW_TAG} -n byok
+kubectl set image deployment/cloudllm-gateway gateway=${REGISTRY}/cloudllm-gateway:${NEW_TAG} -n cloudllm
+kubectl set image deployment/cloudllm-worker  worker=${REGISTRY}/cloudllm-worker:${NEW_TAG}  -n cloudllm
+kubectl set image deployment/cloudllm-console console=${REGISTRY}/cloudllm-console:${NEW_TAG} -n cloudllm
 
 # 步骤 4：等待 rollout 完成
-kubectl rollout status deployment/byok-gateway -n byok
-kubectl rollout status deployment/byok-worker  -n byok
-kubectl rollout status deployment/byok-console -n byok
+kubectl rollout status deployment/cloudllm-gateway -n cloudllm
+kubectl rollout status deployment/cloudllm-worker  -n cloudllm
+kubectl rollout status deployment/cloudllm-console -n cloudllm
 ```
 
 > 大版本升级前建议先备份 PostgreSQL 数据库。
@@ -348,15 +348,15 @@ kubectl rollout status deployment/byok-console -n byok
 
 ```bash
 # 查看 rollout 历史
-kubectl rollout history deployment/byok-gateway -n byok
+kubectl rollout history deployment/cloudllm-gateway -n cloudllm
 
 # 回滚到上一个版本
-kubectl rollout undo deployment/byok-gateway -n byok
-kubectl rollout undo deployment/byok-worker  -n byok
-kubectl rollout undo deployment/byok-console -n byok
+kubectl rollout undo deployment/cloudllm-gateway -n cloudllm
+kubectl rollout undo deployment/cloudllm-worker  -n cloudllm
+kubectl rollout undo deployment/cloudllm-console -n cloudllm
 
 # 回滚到指定版本（--to-revision=N）
-# kubectl rollout undo deployment/byok-gateway --to-revision=2 -n byok
+# kubectl rollout undo deployment/cloudllm-gateway --to-revision=2 -n cloudllm
 ```
 
 > 注意：Deployment 回滚后，如果新版本有 DB schema 变更，
@@ -373,7 +373,7 @@ Gateway 是无状态服务，可随流量水平扩缩：
 
 ```bash
 # 手动扩缩（临时）
-kubectl scale deployment/byok-gateway --replicas=5 -n byok
+kubectl scale deployment/cloudllm-gateway --replicas=5 -n cloudllm
 
 # 或修改 gateway.yaml 中 replicas 字段后 apply（推荐，GitOps 友好）
 ```
@@ -383,8 +383,8 @@ kubectl scale deployment/byok-gateway --replicas=5 -n byok
 基于 CPU 利用率自动扩缩（需集群安装 metrics-server）：
 
 ```bash
-kubectl autoscale deployment/byok-gateway \
-  --namespace=byok \
+kubectl autoscale deployment/cloudllm-gateway \
+  --namespace=cloudllm \
   --min=3 \
   --max=10 \
   --cpu-percent=70
@@ -396,13 +396,13 @@ HPA YAML 示例（可加入 `deploy/k8s/` 目录）：
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: byok-gateway-hpa
-  namespace: byok
+  name: cloudllm-gateway-hpa
+  namespace: cloudllm
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: byok-gateway
+    name: cloudllm-gateway
   minReplicas: 3
   maxReplicas: 10
   metrics:
@@ -422,7 +422,7 @@ Worker 使用 Redis XREADGROUP 消费组，每个 Pod 注册为独立消费者�
 
 ```bash
 # 当 Redis Stream 积压（XLEN usage_events 持续升高）时扩容
-kubectl scale deployment/byok-worker --replicas=3 -n byok
+kubectl scale deployment/cloudllm-worker --replicas=3 -n cloudllm
 ```
 
 ### Console 扩缩
@@ -431,7 +431,7 @@ Console 是 Next.js 无状态服务，Session 用密钥签名 cookie（无服务
 多副本可直接水平扩缩：
 
 ```bash
-kubectl scale deployment/byok-console --replicas=4 -n byok
+kubectl scale deployment/cloudllm-console --replicas=4 -n cloudllm
 ```
 
 ---

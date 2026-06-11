@@ -14,10 +14,10 @@ importers:
 
   apps/console:
     dependencies:
-      '@byok/db':
+      '@cloudllm/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@byok/shared':
+      '@cloudllm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       drizzle-orm:
@@ -57,10 +57,10 @@ importers:
 
   apps/gateway:
     dependencies:
-      '@byok/db':
+      '@cloudllm/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@byok/shared':
+      '@cloudllm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@hono/node-server':
@@ -91,10 +91,10 @@ importers:
 
   apps/worker:
     dependencies:
-      '@byok/db':
+      '@cloudllm/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@byok/shared':
+      '@cloudllm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       drizzle-orm:
@@ -116,7 +116,7 @@ importers:
 
   packages/db:
     dependencies:
-      '@byok/shared':
+      '@cloudllm/shared':
         specifier: workspace:*
         version: link:../shared
       drizzle-orm:

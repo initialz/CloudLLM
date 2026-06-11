@@ -2,18 +2,18 @@
  * channels.test.ts — 真 PG 集成测试 (3 用例)
  *
  * 运行前提:本地 PG 已起,DATABASE_URL 已设置
- * 默认:postgres://byok:byok_dev@localhost:5432/byok
+ * 默认:postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm
  */
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { channels, providers } from "@byok/db";
-import { createDb, type Db } from "@byok/db";
-import { decryptSecret } from "@byok/shared";
+import { channels, providers } from "@cloudllm/db";
+import { createDb, type Db } from "@cloudllm/db";
+import { decryptSecret } from "@cloudllm/shared";
 import { createChannel, rotateChannelCredential } from "./channels.js";
 
 const DATABASE_URL =
-  process.env.DATABASE_URL ?? "postgres://byok:byok_dev@localhost:5432/byok";
+  process.env.DATABASE_URL ?? "postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm";
 
 // 测试用主密钥:32 字节,base64 编码
 const MASTER_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; // 32 zero bytes base64

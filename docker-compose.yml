@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: byok
-      POSTGRES_PASSWORD: byok_dev
-      POSTGRES_DB: byok
+      POSTGRES_USER: cloudllm
+      POSTGRES_PASSWORD: cloudllm_dev
+      POSTGRES_DB: cloudllm
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U byok -d byok"]
+      test: ["CMD-SHELL", "pg_isready -U cloudllm -d cloudllm"]
       interval: 10s
       timeout: 5s
       retries: 5

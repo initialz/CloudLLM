@@ -5,39 +5,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: byok-worker
-  namespace: byok
+  name: cloudllm-worker
+  namespace: cloudllm
   labels:
-    app.kubernetes.io/name: byok-worker
-    app.kubernetes.io/part-of: byok
+    app.kubernetes.io/name: cloudllm-worker
+    app.kubernetes.io/part-of: cloudllm
 spec:
   # 默认 1 副本；需提升吞吐时增加（见上方说明）
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: byok-worker
+      app.kubernetes.io/name: cloudllm-worker
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: byok-worker
-        app.kubernetes.io/part-of: byok
+        app.kubernetes.io/name: cloudllm-worker
+        app.kubernetes.io/part-of: cloudllm
     spec:
       # Worker 收到 SIGTERM 后处理完当前消费批次再退出，无需额外排水时间
       terminationGracePeriodSeconds: 60
       containers:
         - name: worker
           # 替换 <registry> 和 <tag> 为实际镜像地址
-          image: <registry>/byok-worker:<tag>
+          image: <registry>/cloudllm-worker:<tag>
           env:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: byok-secrets
+                  name: cloudllm-secrets
                   key: DATABASE_URL
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:
-                  name: byok-secrets
+                  name: cloudllm-secrets
                   key: REDIS_URL
           resources:
             requests:

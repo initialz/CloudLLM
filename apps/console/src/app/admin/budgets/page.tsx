@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { apiKeys, apps, budgets, teams, users } from "@byok/db";
+import { apiKeys, apps, budgets, teams, users } from "@cloudllm/db";
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
 import BudgetsClient from "./budgets-client";

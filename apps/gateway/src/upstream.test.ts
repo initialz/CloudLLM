@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { encryptSecret } from "@byok/shared";
+import { encryptSecret } from "@cloudllm/shared";
 import { describe, expect, it } from "vitest";
 import { forwardWithFailover } from "./upstream.js";
 import type { ChannelChoice, CooldownStore } from "./types.js";

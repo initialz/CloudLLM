@@ -10,7 +10,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import postgres from "../../node_modules/.pnpm/postgres@3.4.9/node_modules/postgres/src/index.js";
 
-// 动态 import @byok/db and @byok/shared from the built dist
+// 动态 import @cloudllm/db and @cloudllm/shared from the built dist
 const { createDb, apiKeys, budgets, channels, modelChannels, models, providers, users } = await import("../../packages/db/dist/index.js");
 const { encryptSecret, generateApiKey } = await import("../../packages/shared/dist/index.js");
 import { eq } from "../../node_modules/.pnpm/drizzle-orm@0.44.7_postgres@3.4.9/node_modules/drizzle-orm/index.js";

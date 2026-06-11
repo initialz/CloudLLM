@@ -3,7 +3,7 @@
 # 使用方法：
 #   docker compose -f docker-compose.prod.yml -f docker-compose.acceptance.yml --env-file .env up -d --build
 # 注意：此文件仅用于验收测试，不应在生产无监控环境长期运行
-name: byok
+name: cloudllm
 
 services:
   postgres:

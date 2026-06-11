@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { DEFAULT_USAGE_STREAM } from "@byok/shared";
+import { DEFAULT_USAGE_STREAM } from "@cloudllm/shared";
 
 export interface WorkerConfig {
   databaseUrl: string;

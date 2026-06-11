@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const COOKIE_NAME = "byok_session";
+const COOKIE_NAME = "cloudllm_session";
 
 /**
  * 中间件:未登录用户重定向至 /login

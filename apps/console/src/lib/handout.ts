@@ -4,13 +4,13 @@
  * 规则(来自 README 接入示例风格):
  *   - ANTHROPIC_BASE_URL  不带 /v1
  *   - OpenAI base_url / baseURL  带 /v1
- *   - Key 前缀格式 sk-wtg-
+ *   - Key 前缀格式 sk-cloudllm-
  */
 
 export interface HandoutOptions {
   /** 网关对外地址;末尾斜杠会被规整 */
   gatewayUrl: string;
-  /** Key 明文(sk-wtg-...) */
+  /** Key 明文(sk-cloudllm-...) */
   plaintextKey: string;
   /** 允许的模型 slug 列表;空数组 = 不限制 */
   modelSlugs: string[];
@@ -47,7 +47,7 @@ export function buildHandout(opts: HandoutOptions): string {
   const sections: string[] = [];
 
   // ── 标题 & 基本信息 ──────────────────────────────────────────────────────
-  sections.push(`# BYOK 网关接入说明
+  sections.push(`# CloudLLM 网关接入说明
 
 > 请妥善保管此 Key,请勿外泄。
 

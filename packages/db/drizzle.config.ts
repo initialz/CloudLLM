@@ -5,6 +5,6 @@ export default defineConfig({
   schema: "./src/schema.ts",
   out: "./migrations",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://byok:byok_dev@localhost:5432/byok",
+    url: process.env.DATABASE_URL ?? "postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm",
   },
 });

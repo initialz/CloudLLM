@@ -9,7 +9,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
 const DATABASE_URL =
-  process.env.DATABASE_URL ?? "postgres://byok:byok_dev@localhost:5432/byok";
+  process.env.DATABASE_URL ?? "postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm";
 
 // __dirname equivalent in ESM
 const __dirname = fileURLToPath(new URL(".", import.meta.url));

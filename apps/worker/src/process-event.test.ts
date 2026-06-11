@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { createDb, apiKeys, budgets, ledgerEntries, requestLogs, usageRecords, users } from "@byok/db";
-import { cnyToMicro, generateApiKey, hashPassword } from "@byok/shared";
-import type { UsageEvent } from "@byok/shared";
+import { createDb, apiKeys, budgets, ledgerEntries, requestLogs, usageRecords, users } from "@cloudllm/db";
+import { cnyToMicro, generateApiKey, hashPassword } from "@cloudllm/shared";
+import type { UsageEvent } from "@cloudllm/shared";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { processEvent, type BalanceWrite } from "./process-event.js";
 
-const DB_URL = process.env.DATABASE_URL ?? process.env.DATABASE_URL_TEST ?? "postgres://byok:byok_dev@localhost:5432/byok";
+const DB_URL = process.env.DATABASE_URL ?? process.env.DATABASE_URL_TEST ?? "postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm";
 
 class FakeBalance {
   writes: Array<{ key: string; value: string; ttl: number }> = [];
