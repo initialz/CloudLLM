@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod crypto;
+pub mod db;
 
 /// 当前 unix epoch 秒。全工程统一时间来源。
 pub fn now_epoch() -> i64 {
