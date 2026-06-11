@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { encryptSecret, generateApiKey } from "@byok/shared";
+import { encryptSecret, generateApiKey } from "@cloudllm/shared";
 import { describe, expect, it } from "vitest";
 import { createApp, type AppDeps } from "./app.js";
 import type {

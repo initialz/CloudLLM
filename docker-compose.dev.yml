@@ -14,7 +14,7 @@
 #   console:   3000:3000
 #
 # 卷说明：
-#   byok-dev_pgdata — 独立的 dev compose 专属卷（不与根 docker-compose.yml 的 pgdata 共享）
+#   cloudllm-dev_pgdata — 独立的 dev compose 专属卷（不与根 docker-compose.yml 的 pgdata 共享）
 #                     两个 PostgreSQL 实例不可写同一数据目录，独立卷保证数据安全
 #                     如需复用现有数据，请手动迁移或使用 pg_dump/restore
 #
@@ -22,7 +22,7 @@
 #   docker compose -f docker-compose.dev.yml up -d --build
 # =============================================================================
 
-name: byok-dev
+name: cloudllm-dev
 
 services:
   # ---------------------------------------------------------------------------
@@ -31,18 +31,18 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: byok
-      POSTGRES_PASSWORD: byok_dev
-      POSTGRES_DB: byok
+      POSTGRES_USER: cloudllm
+      POSTGRES_PASSWORD: cloudllm_dev
+      POSTGRES_DB: cloudllm
     ports:
       # 注意：本机 5432 已被现有 dev PG 容器占用，此处映射 15432:5432
-      # 宿主访问：psql -h localhost -p 15432 -U byok byok
-      # 容器内互联：DATABASE_URL=postgres://byok:byok_dev@postgres:5432/byok（不变）
+      # 宿主访问：psql -h localhost -p 15432 -U cloudllm cloudllm
+      # 容器内互联：DATABASE_URL=postgres://cloudllm:cloudllm_dev@postgres:5432/cloudllm（不变）
       - "15432:5432"
     volumes:
-      - byok-dev_pgdata:/var/lib/postgresql/data
+      - cloudllm-dev_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U byok -d byok"]
+      test: ["CMD-SHELL", "pg_isready -U cloudllm -d cloudllm"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -65,9 +65,9 @@ services:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
-    command: ["node", "node_modules/@byok/db/dist/migrate.js"]
+    command: ["node", "node_modules/@cloudllm/db/dist/migrate.js"]
     environment:
-      DATABASE_URL: postgres://byok:byok_dev@postgres:5432/byok
+      DATABASE_URL: postgres://cloudllm:cloudllm_dev@postgres:5432/cloudllm
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,9 +77,9 @@ services:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
-    command: ["node", "node_modules/@byok/db/dist/seed.js"]
+    command: ["node", "node_modules/@cloudllm/db/dist/seed.js"]
     environment:
-      DATABASE_URL: postgres://byok:byok_dev@postgres:5432/byok
+      DATABASE_URL: postgres://cloudllm:cloudllm_dev@postgres:5432/cloudllm
       # 默认 seed 管理员账号（可通过环境变量覆盖）
       SEED_ADMIN_EMAIL: admin@example.com
       SEED_ADMIN_PASSWORD: change-me-now
@@ -99,7 +99,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgres://byok:byok_dev@postgres:5432/byok
+      DATABASE_URL: postgres://cloudllm:cloudllm_dev@postgres:5432/cloudllm
       REDIS_URL: redis://redis:6379
       # 固定 dev 主密钥（32 字节 base64）— 仅开发，勿用于生产
       MASTER_KEY: /o4Hoi3CCed8CohTkzih2Ni634Os4g16ZHPNU8SXsx8=
@@ -120,7 +120,7 @@ services:
       dockerfile: apps/worker/Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://byok:byok_dev@postgres:5432/byok
+      DATABASE_URL: postgres://cloudllm:cloudllm_dev@postgres:5432/cloudllm
       REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
@@ -138,7 +138,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgres://byok:byok_dev@postgres:5432/byok
+      DATABASE_URL: postgres://cloudllm:cloudllm_dev@postgres:5432/cloudllm
       # 固定 dev 会话密钥（hex）— 仅开发，勿用于生产
       SESSION_SECRET: 8eaacf2d4f8f9d3019e9a3bab0ad343baba77f6a6af9cc2ce20990de0eb8cca5
       MASTER_KEY: /o4Hoi3CCed8CohTkzih2Ni634Os4g16ZHPNU8SXsx8=
@@ -152,4 +152,4 @@ services:
 volumes:
   # 独立卷，不与根 docker-compose.yml 的 pgdata 共享
   # 确保两个 PG 实例不会写同一数据目录（数据安全优先）
-  byok-dev_pgdata:
+  cloudllm-dev_pgdata:

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { PgDatabase } from "drizzle-orm/pg-core";
-import { apiKeys, type Db } from "@byok/db";
-import { generateApiKey } from "@byok/shared";
+import { apiKeys, type Db } from "@cloudllm/db";
+import { generateApiKey } from "@cloudllm/shared";
 
 /**
  * DbOrTx: createApiKey/revokeApiKey 接受的 db 类型。

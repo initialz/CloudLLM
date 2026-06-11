@@ -1,4 +1,4 @@
-# BYOK 网关（Bring Your Own Key Gateway）
+# CloudLLM 网关（Bring Your Own Key Gateway）
 
 企业级 AI API 代理网关：将上游 LLM API（OpenAI、Anthropic 等）封装为统一接口，支持自定义 Key 签发、成本预算管控、用量报表与审计日志。
 
@@ -8,7 +8,7 @@
 
 ```
 调用方 (curl / OpenAI SDK / Claude Code)
-         │  Bearer sk-wtg-xxxx
+         │  Bearer sk-cloudllm-xxxx
          ▼
 ┌─────────────────────────┐
 │  Gateway (Hono, :8080)  │  ← Key 认证 / 预算检查 / 上游路由
@@ -99,10 +99,10 @@ docker compose up -d   # 使用根目录 docker-compose.yml（PG:5432, Redis:637
 
 ```bash
 # 迁移
-pnpm --filter @byok/db migrate
+pnpm --filter @cloudllm/db migrate
 
 # 种子（首次；幂等可重复跑）
-pnpm --filter @byok/db seed
+pnpm --filter @cloudllm/db seed
 # 默认管理员：admin@example.com / change-me-now
 # 可通过环境变量覆盖：SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD
 ```
@@ -111,13 +111,13 @@ pnpm --filter @byok/db seed
 
 ```bash
 # 终端 1：Gateway（:8080）
-pnpm --filter @byok/gateway dev
+pnpm --filter @cloudllm/gateway dev
 
 # 终端 2：Worker（消费后台）
-pnpm --filter @byok/worker build && node apps/worker/dist/index.js
+pnpm --filter @cloudllm/worker build && node apps/worker/dist/index.js
 
 # 终端 3：Console（:3000）
-pnpm --filter @byok/console dev
+pnpm --filter @cloudllm/console dev
 ```
 
 #### 5. 验证
@@ -136,11 +136,11 @@ open http://localhost:3000/login     # Console 登录
 docker compose -f docker-compose.dev.yml up -d postgres redis gateway worker
 
 # 本地热重载 console（正在迭代）
-DATABASE_URL=postgres://byok:byok_dev@localhost:15432/byok \
+DATABASE_URL=postgres://cloudllm:cloudllm_dev@localhost:15432/cloudllm \
   MASTER_KEY=/o4Hoi3CCed8CohTkzih2Ni634Os4g16ZHPNU8SXsx8= \
   SESSION_SECRET=8eaacf2d4f8f9d3019e9a3bab0ad343baba77f6a6af9cc2ce20990de0eb8cca5 \
   GATEWAY_PUBLIC_URL=http://localhost:8080 \
-  pnpm --filter @byok/console dev
+  pnpm --filter @cloudllm/console dev
 ```
 
 > 注意混合模式时，本地服务的端口（`:3000`）不能与 compose 中同服务冲突。
@@ -206,11 +206,11 @@ docker compose -f docker-compose.prod.yml --env-file .env \
   run --rm \
   -e SEED_ADMIN_EMAIL=admin@yourcompany.com \
   -e SEED_ADMIN_PASSWORD='use-a-strong-password' \
-  worker node node_modules/@byok/db/dist/seed.js
+  worker node node_modules/@cloudllm/db/dist/seed.js
 
 # 方式 2：直接 psql 手动插入（最简单兜底）
 docker compose -f docker-compose.prod.yml exec postgres \
-  psql -U byok -d byok \
+  psql -U cloudllm -d cloudllm \
   -c "INSERT INTO users (id, email, password_hash, role) VALUES (...) ON CONFLICT DO NOTHING;"
 ```
 
@@ -248,7 +248,7 @@ docker compose -f docker-compose.prod.yml down
 
 ## 调用方接入示例
 
-Console 登录后，在 **Key 管理** 页签发 `sk-wtg-xxxx` 格式的 Key。
+Console 登录后，在 **Key 管理** 页签发 `sk-cloudllm-xxxx` 格式的 Key。
 
 ### OpenAI SDK（Python）
 
@@ -256,7 +256,7 @@ Console 登录后，在 **Key 管理** 页签发 `sk-wtg-xxxx` 格式的 Key。
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="sk-wtg-your-key-here",
+    api_key="sk-cloudllm-your-key-here",
     base_url="http://your-host:8080/v1",  # gateway 地址
 )
 
@@ -273,7 +273,7 @@ print(response.choices[0].message.content)
 import OpenAI from "openai";
 
 const client = new OpenAI({
-  apiKey: "sk-wtg-your-key-here",
+  apiKey: "sk-cloudllm-your-key-here",
   baseURL: "http://your-host:8080/v1",
 });
 
@@ -286,9 +286,9 @@ const res = await client.chat.completions.create({
 ### Claude Code / Claude CLI
 
 ```bash
-# 设置环境变量，Claude Code 将请求转发至 BYOK Gateway
+# 设置环境变量，Claude Code 将请求转发至 CloudLLM Gateway
 export ANTHROPIC_BASE_URL=http://your-host:8080
-export ANTHROPIC_API_KEY=sk-wtg-your-key-here
+export ANTHROPIC_API_KEY=sk-cloudllm-your-key-here
 claude "帮我写一个 hello world"
 ```
 
@@ -296,7 +296,7 @@ claude "帮我写一个 hello world"
 
 ```bash
 curl http://your-host:8080/v1/chat/completions \
-  -H "Authorization: Bearer sk-wtg-your-key-here" \
+  -H "Authorization: Bearer sk-cloudllm-your-key-here" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-4o",
@@ -308,7 +308,7 @@ curl http://your-host:8080/v1/chat/completions \
 
 ```bash
 curl http://your-host:8080/v1/messages \
-  -H "Authorization: Bearer sk-wtg-your-key-here" \
+  -H "Authorization: Bearer sk-cloudllm-your-key-here" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -326,12 +326,12 @@ curl http://your-host:8080/v1/messages \
 ```bash
 # 备份 PostgreSQL 数据卷（pgdata）
 docker compose -f deploy/docker-compose.prod.yml exec postgres \
-  pg_dump -U byok byok | gzip > backup_$(date +%Y%m%d_%H%M%S).sql.gz
+  pg_dump -U cloudllm cloudllm | gzip > backup_$(date +%Y%m%d_%H%M%S).sql.gz
 
 # 恢复
 gunzip < backup_xxx.sql.gz | \
   docker compose -f deploy/docker-compose.prod.yml exec -T postgres \
-  psql -U byok byok
+  psql -U cloudllm cloudllm
 ```
 
 ### 监控 Redis Stream 积压
@@ -401,7 +401,7 @@ curl localhost:${GATEWAY_PORT:-8080}/healthz
 ## 目录结构
 
 ```
-byok/
+cloudllm/
 ├── apps/
 │   ├── gateway/        # Hono API 网关（:8080）
 │   │   ├── src/

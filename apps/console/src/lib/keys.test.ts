@@ -2,18 +2,18 @@
  * keys.test.ts — 真 PG 集成测试 (4 用例)
  *
  * 运行前提:本地 PG 已起,DATABASE_URL 已设置
- * 默认:postgres://byok:byok_dev@localhost:5432/byok
+ * 默认:postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm
  */
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { apiKeys } from "@byok/db";
-import { createDb, type Db } from "@byok/db";
-import { hashApiKey } from "@byok/shared";
+import { apiKeys } from "@cloudllm/db";
+import { createDb, type Db } from "@cloudllm/db";
+import { hashApiKey } from "@cloudllm/shared";
 import { createApiKey, revokeApiKey } from "./keys.js";
 
 const DATABASE_URL =
-  process.env.DATABASE_URL ?? "postgres://byok:byok_dev@localhost:5432/byok";
+  process.env.DATABASE_URL ?? "postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm";
 
 let db: Db;
 let sql: { end: () => Promise<void> };

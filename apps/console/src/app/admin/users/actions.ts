@@ -2,8 +2,8 @@
 
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { users } from "@byok/db";
-import { hashPassword } from "@byok/shared";
+import { users } from "@cloudllm/db";
+import { hashPassword } from "@cloudllm/shared";
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
 

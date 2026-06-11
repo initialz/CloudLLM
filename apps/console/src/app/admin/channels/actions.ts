@@ -2,7 +2,7 @@
 
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { channels } from "@byok/db";
+import { channels } from "@cloudllm/db";
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
 import { createChannel, rotateChannelCredential } from "../../../lib/channels";

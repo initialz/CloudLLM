@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { channels, providers } from "@byok/db";
+import { channels, providers } from "@cloudllm/db";
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
 import ChannelsClient from "./channels-client";

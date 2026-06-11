@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   // monorepo workspace 包需要 transpile,否则 Next.js webpack 无法处理 ESM
-  transpilePackages: ["@byok/db", "@byok/shared"],
+  transpilePackages: ["@cloudllm/db", "@cloudllm/shared"],
 };
 
 export default nextConfig;

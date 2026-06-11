@@ -2,8 +2,8 @@
 
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { apiKeys, budgets, models } from "@byok/db";
-import { cnyToMicro } from "@byok/shared";
+import { apiKeys, budgets, models } from "@cloudllm/db";
+import { cnyToMicro } from "@cloudllm/shared";
 import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 import { createApiKey, revokeApiKey } from "../../lib/keys";

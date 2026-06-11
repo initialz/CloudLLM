@@ -13,12 +13,12 @@ describe("buildHandout", () => {
   it("Key/URL 正确嵌入;空模型数组 → 全部模型可用说明", () => {
     const out = buildHandout({
       gatewayUrl: "http://gateway.example.com:8080/",
-      plaintextKey: "sk-wtg-abc123",
+      plaintextKey: "sk-cloudllm-abc123",
       modelSlugs: [],
     });
 
     // Key 嵌入
-    expect(out).toContain("sk-wtg-abc123");
+    expect(out).toContain("sk-cloudllm-abc123");
     // URL 嵌入(末尾斜杠已规整)
     expect(out).toContain("http://gateway.example.com:8080");
     // 空模型 → 说明全部可用
@@ -31,14 +31,14 @@ describe("buildHandout", () => {
   it("anthropic/* 模型 → 包含 Claude Code 配置段;无 openai/* 则无 OpenAI SDK 段", () => {
     const out = buildHandout({
       gatewayUrl: "http://localhost:8080",
-      plaintextKey: "sk-wtg-testkey",
+      plaintextKey: "sk-cloudllm-testkey",
       modelSlugs: ["anthropic/claude-3-5-sonnet", "anthropic/claude-3-haiku"],
     });
 
     // Claude Code 段存在
     expect(out).toContain("ANTHROPIC_BASE_URL");
     expect(out).toContain("ANTHROPIC_AUTH_TOKEN");
-    expect(out).toContain("sk-wtg-testkey");
+    expect(out).toContain("sk-cloudllm-testkey");
     // BASE_URL 不带 /v1
     expect(out).toContain("ANTHROPIC_BASE_URL=http://localhost:8080");
     expect(out).not.toContain("ANTHROPIC_BASE_URL=http://localhost:8080/v1");
@@ -53,14 +53,14 @@ describe("buildHandout", () => {
   it("openai/* 模型 → OpenAI SDK 段(Python+JS);anthropic/* + openai/* 两段都出", () => {
     const out = buildHandout({
       gatewayUrl: "http://my-gateway:9000",
-      plaintextKey: "sk-wtg-mixed",
+      plaintextKey: "sk-cloudllm-mixed",
       modelSlugs: ["openai/gpt-4o", "anthropic/claude-opus-4"],
     });
 
     // OpenAI SDK 段(Python)
     expect(out).toContain("from openai import");
     expect(out).toContain('base_url="http://my-gateway:9000/v1"');
-    expect(out).toContain('"sk-wtg-mixed"');
+    expect(out).toContain('"sk-cloudllm-mixed"');
 
     // OpenAI SDK 段(JS/TS)
     expect(out).toContain("import OpenAI");

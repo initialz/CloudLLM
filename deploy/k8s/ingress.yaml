@@ -1,11 +1,11 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: byok-ingress
-  namespace: byok
+  name: cloudllm-ingress
+  namespace: cloudllm
   labels:
-    app.kubernetes.io/name: byok-ingress
-    app.kubernetes.io/part-of: byok
+    app.kubernetes.io/name: cloudllm-ingress
+    app.kubernetes.io/part-of: cloudllm
   annotations:
     # ── Ingress Controller 注解（按公司环境修改）────────────────────────────────
     # nginx-ingress 示例（取消注释并按需调整）：
@@ -34,7 +34,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: byok-gateway
+                name: cloudllm-gateway
                 port:
                   number: 80
     # ── Console：管理后台 ───────────────────────────────────────────────────
@@ -46,14 +46,14 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: byok-console
+                name: cloudllm-console
                 port:
                   number: 80
   # ── TLS（按公司 TLS 策略配置，取消注释）──────────────────────────────────
   # tls:
   #   - hosts:
   #       - api.<domain>
-  #     secretName: byok-gateway-tls
+  #     secretName: cloudllm-gateway-tls
   #   - hosts:
   #       - console.<domain>
-  #     secretName: byok-console-tls
+  #     secretName: cloudllm-console-tls

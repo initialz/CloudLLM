@@ -1,6 +1,6 @@
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
-import { apiKeys, apps, budgets, channels, modelChannels, models, type Db } from "@byok/db";
-import { cnyToMicro } from "@byok/shared";
+import { apiKeys, apps, budgets, channels, modelChannels, models, type Db } from "@cloudllm/db";
+import { cnyToMicro } from "@cloudllm/shared";
 import type {
   AuthedKey, BudgetLoader, BudgetSubject, CatalogRepo, ChannelChoice, KeyRepo, ModelInfo,
 } from "./types.js";

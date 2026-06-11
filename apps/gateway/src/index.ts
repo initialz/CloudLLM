@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 import { Redis } from "ioredis";
-import { createDb } from "@byok/db";
+import { createDb } from "@cloudllm/db";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { DrizzleBudgetLoader, DrizzleCatalogRepo, DrizzleKeyRepo } from "./db-access.js";

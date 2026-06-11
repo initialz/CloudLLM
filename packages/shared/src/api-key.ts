@@ -11,7 +11,7 @@ export interface GeneratedApiKey {
 
 export function generateApiKey(): GeneratedApiKey {
   // 24 字节 → base64url 32 字符
-  const plaintext = `sk-wtg-${randomBytes(24).toString("base64url")}`;
+  const plaintext = `sk-cloudllm-${randomBytes(24).toString("base64url")}`;
   return {
     plaintext,
     keyHash: hashApiKey(plaintext),

@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { models } from "@byok/db";
+import { models } from "@cloudllm/db";
 import { requireAdmin } from "../../lib/auth";
 import { db } from "../../lib/db";
 import { buildHandout } from "../../lib/handout";
@@ -21,7 +21,7 @@ export default async function GuidePage() {
 
   const handout = buildHandout({
     gatewayUrl,
-    plaintextKey: "sk-wtg-<成员的Key>",
+    plaintextKey: "sk-cloudllm-<成员的Key>",
     modelSlugs,
   });
 

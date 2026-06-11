@@ -1,14 +1,14 @@
 /**
  * e2e 造数:provider 渠道(指向本地假上游)、两个模型、一把 Key、一份小额预算。
- * 运行:pnpm --filter @byok/gateway e2e-seed
+ * 运行:pnpm --filter @cloudllm/gateway e2e-seed
  * 输出:可直接用于 curl 的明文 Key。
  */
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { createDb, apiKeys, budgets, channels, modelChannels, models, providers, users } from "@byok/db";
-import { encryptSecret, generateApiKey } from "@byok/shared";
+import { createDb, apiKeys, budgets, channels, modelChannels, models, providers, users } from "@cloudllm/db";
+import { encryptSecret, generateApiKey } from "@cloudllm/shared";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://byok:byok_dev@localhost:5432/byok";
+const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm";
 const MASTER_KEY = process.env.MASTER_KEY;
 if (!MASTER_KEY) throw new Error("需要 MASTER_KEY 环境变量(32 字节 base64)");
 

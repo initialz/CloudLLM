@@ -1,5 +1,5 @@
 {
-  "name": "@byok/console",
+  "name": "@cloudllm/console",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,8 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@byok/db": "workspace:*",
-    "@byok/shared": "workspace:*",
+    "@cloudllm/db": "workspace:*",
+    "@cloudllm/shared": "workspace:*",
     "drizzle-orm": "^0.44.2",
     "next": "^15.3.3",
     "react": "^19.1.0",

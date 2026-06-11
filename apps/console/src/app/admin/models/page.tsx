@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { channels, modelChannels, models, providers } from "@byok/db";
+import { channels, modelChannels, models, providers } from "@cloudllm/db";
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
 import ModelsClient from "./models-client";

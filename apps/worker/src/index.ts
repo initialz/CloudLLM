@@ -1,5 +1,5 @@
 import { Redis } from "ioredis";
-import { createDb } from "@byok/db";
+import { createDb } from "@cloudllm/db";
 import { loadWorkerConfig } from "./config.js";
 import { UsageConsumer } from "./consumer.js";
 import { cleanupExpiredAuditLogs, resetRolledOverMonthlyBudgets } from "./jobs.js";

@@ -1,7 +1,7 @@
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
 import { queryAuditLogs } from "../../../lib/reports";
-import { apiKeys, requestLogs, usageRecords } from "@byok/db";
+import { apiKeys, requestLogs, usageRecords } from "@cloudllm/db";
 import { and, count, eq } from "drizzle-orm";
 import AuditClient from "./audit-client";
 

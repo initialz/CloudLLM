@@ -1,6 +1,6 @@
-import type { BudgetSubject, UsageEvent, UsageTotals } from "@byok/shared";
+import type { BudgetSubject, UsageEvent, UsageTotals } from "@cloudllm/shared";
 
-export type { BudgetSubject, UsageEvent, UsageTotals } from "@byok/shared";
+export type { BudgetSubject, UsageEvent, UsageTotals } from "@cloudllm/shared";
 
 export type Protocol = "openai" | "anthropic";
 

@@ -123,7 +123,7 @@ export const channels = pgTable("channels", {
   providerId: uuid("provider_id").notNull().references(() => providers.id),
   name: text("name").notNull(),
   baseUrl: text("base_url").notNull(),
-  /** 信封加密 JSON(@byok/shared encryptSecret 产物,AAD=本行 id) */
+  /** 信封加密 JSON(@cloudllm/shared encryptSecret 产物,AAD=本行 id) */
   credentialEncrypted: text("credential_encrypted").notNull(),
   priority: integer("priority").notNull().default(0),
   weight: integer("weight").notNull().default(1),

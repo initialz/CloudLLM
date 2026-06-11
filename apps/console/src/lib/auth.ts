@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { users } from "@byok/db";
-import { verifyPassword } from "@byok/shared";
+import { users } from "@cloudllm/db";
+import { verifyPassword } from "@cloudllm/shared";
 import { db } from "./db";
 import { decodeSession, encodeSession, type SessionData } from "./session";
 
@@ -20,7 +20,7 @@ function getSessionSecret(): string {
   return s;
 }
 
-const COOKIE_NAME = "byok_session";
+const COOKIE_NAME = "cloudllm_session";
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 天
 
 /**

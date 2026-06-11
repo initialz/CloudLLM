@@ -1,5 +1,5 @@
 import type { Redis } from "ioredis";
-import { UNLIMITED_SENTINEL, balKey, cooldownKey } from "@byok/shared";
+import { UNLIMITED_SENTINEL, balKey, cooldownKey } from "@cloudllm/shared";
 import type { BalanceStore, BudgetSubject, CooldownStore, EventSink, UsageEvent } from "./types.js";
 
 export class RedisBalanceStore implements BalanceStore {

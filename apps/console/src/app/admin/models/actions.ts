@@ -2,8 +2,8 @@
 
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { channels, modelChannels, models, providers } from "@byok/db";
-import { cnyToMicro } from "@byok/shared";
+import { channels, modelChannels, models, providers } from "@cloudllm/db";
+import { cnyToMicro } from "@cloudllm/shared";
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
 

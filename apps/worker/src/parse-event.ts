@@ -1,4 +1,4 @@
-import type { UsageEvent } from "@byok/shared";
+import type { UsageEvent } from "@cloudllm/shared";
 
 const STATUSES = new Set(["ok", "upstream_error", "rejected"]);
 

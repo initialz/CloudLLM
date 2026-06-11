@@ -11,12 +11,12 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: byok
-          POSTGRES_PASSWORD: byok_dev
-          POSTGRES_DB: byok
+          POSTGRES_USER: cloudllm
+          POSTGRES_PASSWORD: cloudllm_dev
+          POSTGRES_DB: cloudllm
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U byok" --health-interval 5s
+          --health-cmd "pg_isready -U cloudllm" --health-interval 5s
           --health-timeout 5s --health-retries 10
       redis:
         image: redis:7-alpine
@@ -31,12 +31,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm typecheck
-      - run: pnpm --filter @byok/db migrate
+      - run: pnpm --filter @cloudllm/db migrate
         env:
-          DATABASE_URL: postgres://byok:byok_dev@localhost:5432/byok
+          DATABASE_URL: postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm
       - run: pnpm test
         env:
-          DATABASE_URL: postgres://byok:byok_dev@localhost:5432/byok
+          DATABASE_URL: postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm
           REDIS_URL: redis://localhost:6379
       - name: drizzle drift check
         run: |

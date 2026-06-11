@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { cnyToMicro, computeCostCny } from "@byok/shared";
+import { cnyToMicro, computeCostCny } from "@cloudllm/shared";
 import { authenticate } from "./auth.js";
 import { checkBudgets, settleBudgets, subjectsForKey } from "./budget.js";
 import { selectCandidates } from "./router.js";

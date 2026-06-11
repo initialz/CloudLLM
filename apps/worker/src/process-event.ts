@@ -1,10 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
 import {
   apiKeys, apps, budgets, ledgerEntries, requestLogs, usageRecords, type Db,
-} from "@byok/db";
+} from "@cloudllm/db";
 import {
   type BudgetSubject, type UsageEvent, UNLIMITED_SENTINEL, balKey, cnyToMicro,
-} from "@byok/shared";
+} from "@cloudllm/shared";
 
 /** PG 提交后校正余额缓存的写函数(由调用方绑定 Redis) */
 export type BalanceWrite = (key: string, value: string, ttlSeconds: number) => Promise<void>;

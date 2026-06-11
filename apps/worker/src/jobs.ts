@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, lt, sql } from "drizzle-orm";
-import { budgets, requestLogs, type Db } from "@byok/db";
+import { budgets, requestLogs, type Db } from "@cloudllm/db";
 
 /** 月度预算翻月重置(公司时区按 PG now() 所在时区;返回重置条数) */
 export async function resetRolledOverMonthlyBudgets(db: Db): Promise<number> {

@@ -12,11 +12,11 @@ COPY apps/gateway ./apps/gateway
 
 # 安装依赖（仅 gateway 及其 workspace 依赖）→ 构建 → pnpm deploy 裁剪生产产物
 # pnpm@10 默认不允许非注入式 workspace 部署，使用 --legacy 降级行为
-RUN pnpm install --frozen-lockfile --filter @byok/gateway... \
- && pnpm --filter @byok/shared build \
- && pnpm --filter @byok/db build \
- && pnpm --filter @byok/gateway build \
- && pnpm --filter @byok/gateway --prod deploy --legacy /out
+RUN pnpm install --frozen-lockfile --filter @cloudllm/gateway... \
+ && pnpm --filter @cloudllm/shared build \
+ && pnpm --filter @cloudllm/db build \
+ && pnpm --filter @cloudllm/gateway build \
+ && pnpm --filter @cloudllm/gateway --prod deploy --legacy /out
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM node:22-alpine

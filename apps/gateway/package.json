@@ -1,5 +1,5 @@
 {
-  "name": "@byok/gateway",
+  "name": "@cloudllm/gateway",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "e2e-seed": "node --experimental-strip-types scripts/e2e-seed.ts"
   },
   "dependencies": {
-    "@byok/db": "workspace:*",
-    "@byok/shared": "workspace:*",
+    "@cloudllm/db": "workspace:*",
+    "@cloudllm/shared": "workspace:*",
     "@hono/node-server": "^1.14.0",
     "drizzle-orm": "^0.44.2",
     "hono": "^4.7.0",

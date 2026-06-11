@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { teams } from "@byok/db";
+import { teams } from "@cloudllm/db";
 import { requireAdmin } from "../../../lib/auth";
 import { db } from "../../../lib/db";
 import TeamDetailClient from "./team-detail-client";

@@ -12,10 +12,10 @@ COPY apps/console ./apps/console
 
 # 安装依赖（console 及其 workspace 依赖）→ 构建所有依赖 → Next build
 # pnpm@10 需要 --legacy 标志才能部署 workspace 依赖（此处无 pnpm deploy，install 即可）
-RUN pnpm install --frozen-lockfile --filter @byok/console... \
- && pnpm --filter @byok/shared build \
- && pnpm --filter @byok/db build \
- && pnpm --filter @byok/console build
+RUN pnpm install --frozen-lockfile --filter @cloudllm/console... \
+ && pnpm --filter @cloudllm/shared build \
+ && pnpm --filter @cloudllm/db build \
+ && pnpm --filter @cloudllm/console build
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM node:22-alpine

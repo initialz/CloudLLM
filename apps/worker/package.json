@@ -1,5 +1,5 @@
 {
-  "name": "@byok/worker",
+  "name": "@cloudllm/worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@byok/db": "workspace:*",
-    "@byok/shared": "workspace:*",
+    "@cloudllm/db": "workspace:*",
+    "@cloudllm/shared": "workspace:*",
     "drizzle-orm": "^0.44.2",
     "ioredis": "^5.6.0"
   },
