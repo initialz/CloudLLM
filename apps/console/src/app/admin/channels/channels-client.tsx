@@ -27,7 +27,18 @@ const statusColors: Record<string, string> = {
   cooldown: "bg-yellow-100 text-yellow-700",
 };
 
+// 各供应商默认 Base URL:选完供应商自动带出,用户仍可手动修改
+const DEFAULT_BASE_URL_BY_TYPE: Record<string, string> = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+};
+
 export default function ChannelsClient({ channels: initialChannels, providers }: ChannelsClientProps) {
+  // 按 providerId 取该供应商的默认 Base URL(未知供应商返回空串)
+  function defaultBaseUrlFor(providerId: string): string {
+    const p = providers.find((x) => x.id === providerId);
+    return (p && DEFAULT_BASE_URL_BY_TYPE[p.type]) ?? "";
+  }
   const [showCreate, setShowCreate] = useState(false);
   const [createError, setCreateError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -36,7 +47,8 @@ export default function ChannelsClient({ channels: initialChannels, providers }:
   // Create form
   const [selectedProviderId, setSelectedProviderId] = useState<string>(providers[0]?.id ?? "");
   const [name, setName] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
+  // baseUrl 初值 = 首个供应商的默认地址(自动填充)
+  const [baseUrl, setBaseUrl] = useState<string>(() => defaultBaseUrlFor(providers[0]?.id ?? ""));
   const [credential, setCredential] = useState("");
 
   // Rotate credential state
@@ -63,7 +75,7 @@ export default function ChannelsClient({ channels: initialChannels, providers }:
     } else {
       setShowCreate(false);
       setName("");
-      setBaseUrl("");
+      setBaseUrl(defaultBaseUrlFor(selectedProviderId));
       setCredential("");
       window.location.reload();
     }
@@ -131,7 +143,12 @@ export default function ChannelsClient({ channels: initialChannels, providers }:
                 <label className="block text-xs text-gray-600 mb-1">供应商</label>
                 <select
                   value={selectedProviderId}
-                  onChange={(e) => setSelectedProviderId(e.target.value)}
+                  onChange={(e) => {
+                    const pid = e.target.value;
+                    setSelectedProviderId(pid);
+                    // 选完供应商自动带出默认 Base URL(下方输入框仍可手改)
+                    setBaseUrl(defaultBaseUrlFor(pid));
+                  }}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
                   required
                 >
@@ -156,7 +173,7 @@ export default function ChannelsClient({ channels: initialChannels, providers }:
               </div>
               <div>
                 <label className="block text-xs text-gray-600 mb-1">
-                  Base URL <span className="text-gray-400">(必须以 /v1 结尾)</span>
+                  Base URL <span className="text-gray-400">(选供应商自动填充,可修改;须以 /v1 结尾)</span>
                 </label>
                 <input
                   type="text"
