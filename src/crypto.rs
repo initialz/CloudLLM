@@ -11,6 +11,8 @@ use sha2::{Digest, Sha256};
 pub const API_KEY_PREFIX: &str = "sk-cloudllm-";
 /// key_prefix 字段长度(后台识别用,与 TS 版一致)
 const KEY_PREFIX_LEN: usize = 15;
+/// 密码长度上限:防 argon2 计算型 DoS(对 hash 与 verify 统一适用)
+const MAX_PASSWORD_LEN: usize = 1024;
 
 pub struct GeneratedApiKey {
     /// 完整明文,仅创建时返回一次
@@ -22,6 +24,10 @@ pub struct GeneratedApiKey {
 }
 
 pub fn hash_password(password: &str) -> Result<String> {
+    // 上限防 argon2 计算型 DoS(与 TS 版一致);argon2 对超长输入会全量哈希
+    if password.len() > MAX_PASSWORD_LEN {
+        return Err(anyhow!("密码过长(上限 {MAX_PASSWORD_LEN} 字符)"));
+    }
     let salt = SaltString::generate(&mut PwOsRng);
     Argon2::default()
         .hash_password(password.as_bytes(), &salt)
@@ -30,6 +36,10 @@ pub fn hash_password(password: &str) -> Result<String> {
 }
 
 pub fn verify_password(password: &str, hash: &str) -> bool {
+    // 超长直接 false,不跑 argon2;上限对所有输入统一适用,不构成枚举信号
+    if password.len() > MAX_PASSWORD_LEN {
+        return false;
+    }
     PasswordHash::new(hash)
         .map(|parsed| {
             Argon2::default()
@@ -75,6 +85,19 @@ mod tests {
     #[test]
     fn verify_garbage_hash_is_false_not_panic() {
         assert!(!verify_password("x", "not-a-phc-string"));
+    }
+
+    #[test]
+    fn hash_password_rejects_overlong() {
+        let long = "x".repeat(1025);
+        assert!(hash_password(&long).is_err());
+        assert!(hash_password(&"x".repeat(1024)).is_ok());
+    }
+
+    #[test]
+    fn verify_password_overlong_is_false_without_hashing() {
+        let h = hash_password("normal").unwrap();
+        assert!(!verify_password(&"x".repeat(1025), &h));
     }
 
     #[test]
