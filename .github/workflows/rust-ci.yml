@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rust:
     runs-on: ubuntu-latest
@@ -15,8 +19,8 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
 
   admin-ui:
     runs-on: ubuntu-latest
@@ -24,7 +28,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: exists
-        run: test -f admin-ui/package.json && echo "yes=true" >> "$GITHUB_OUTPUT" || echo "yes=false" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -f admin-ui/package.json ]; then
+            echo "yes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "yes=false" >> "$GITHUB_OUTPUT"
+          fi
       - if: steps.exists.outputs.yes == 'true'
         uses: actions/setup-node@v4
         with:
@@ -33,4 +42,4 @@ jobs:
         working-directory: admin-ui
         run: npm ci && npm run build
       - if: steps.exists.outputs.yes == 'false'
-        run: echo "admin-ui 尚未创建,跳过"
+        run: echo "::warning::admin-ui 尚未创建,跳过构建(admin-ui 落地后此分支应改为 exit 1)"

@@ -9,3 +9,4 @@ coverage/
 *.tsbuildinfo
 .playwright-mcp/
 /target
+Cargo.lock.orig
