@@ -5,7 +5,7 @@ use std::path::Path;
 
 /// CloudLLM 主配置。来源:TOML 文件 → CLOUDLLM_* 环境变量覆盖 → validate()。
 /// 启动即校验失败即退出;不做运行期惰性校验。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Config {
     #[serde(default = "default_listen")]
     pub listen: String,
@@ -17,6 +17,19 @@ pub struct Config {
     pub session_secret: String,
     #[serde(default)]
     pub gateway_public_url: Option<String>,
+}
+
+// 手写 Debug:master_key / session_secret 是明文密钥,绝不能随 {:?} 进日志或 backtrace
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("listen", &self.listen)
+            .field("db_path", &self.db_path)
+            .field("master_key", &"<redacted>")
+            .field("session_secret", &"<redacted>")
+            .field("gateway_public_url", &self.gateway_public_url)
+            .finish()
+    }
 }
 
 fn default_listen() -> String {
@@ -111,13 +124,26 @@ mod tests {
         cfg.apply_overrides(|k| match k {
             "CLOUDLLM_LISTEN" => Some("127.0.0.1:9000".into()),
             "CLOUDLLM_DB_PATH" => Some("/data/x.db".into()),
+            "CLOUDLLM_MASTER_KEY" => Some("CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=".into()),
+            "CLOUDLLM_SESSION_SECRET" => Some("override-session-secret-0123456789ab".into()),
             "CLOUDLLM_GATEWAY_PUBLIC_URL" => Some("https://llm.corp".into()),
             _ => None,
         });
         cfg.validate().unwrap();
         assert_eq!(cfg.listen, "127.0.0.1:9000");
         assert_eq!(cfg.db_path, "/data/x.db");
+        assert_eq!(cfg.master_key_bytes(), [9u8; 32]);
+        assert_eq!(cfg.session_secret, "override-session-secret-0123456789ab");
         assert_eq!(cfg.gateway_public_url.as_deref(), Some("https://llm.corp"));
+    }
+
+    #[test]
+    fn debug_redacts_secrets() {
+        let cfg: Config = toml::from_str(&base_toml()).unwrap();
+        let s = format!("{cfg:?}");
+        assert!(s.contains("<redacted>"));
+        assert!(!s.contains(MK), "Debug 输出不得包含 master_key 明文");
+        assert!(!s.contains(SS), "Debug 输出不得包含 session_secret 明文");
     }
 
     #[test]
