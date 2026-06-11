@@ -6,6 +6,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
+use axum_extra::extract::WithRejection;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
@@ -22,6 +23,8 @@ struct LoginReq {
     password: String,
 }
 
+// role 硬编码 "admin":AdminUser extractor 已保证仅 admin 可达。
+// 若未来 extractor 放宽多角色,此处必须改为携带真实 role。
 #[derive(Serialize)]
 struct MeResp {
     email: String,
@@ -49,7 +52,7 @@ fn dummy_password_hash() -> &'static str {
 async fn login(
     State(state): State<AppState>,
     jar: CookieJar,
-    Json(req): Json<LoginReq>,
+    WithRejection(Json(req), _): WithRejection<Json<LoginReq>, ApiError>,
 ) -> Result<(CookieJar, Json<MeResp>), ApiError> {
     let row: Option<(String, String, String, String, String)> =
         sqlx::query_as("SELECT id, email, password_hash, role, status FROM users WHERE email = ?")
@@ -63,6 +66,8 @@ async fn login(
         let _ = crate::crypto::verify_password(&req.password, dummy_password_hash());
         return Err(ApiError::login_failed());
     };
+    // 注:status!=active 时 || 短路跳过 verify,「存在但停用」账号响应略快——
+    // 内部威胁模型下接受此时序差(修复需 disabled 路径也跑 dummy verify,不值得)。
     if status != "active"
         || !crate::crypto::verify_password(&req.password, &password_hash)
         || role != "admin"
@@ -246,6 +251,54 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn login_malformed_json_unified_error() {
+        let state = state_with_admin().await;
+        let req = Request::builder()
+            .method("POST")
+            .uri("/admin/api/login")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from("{not json"))
+            .unwrap();
+        let resp = app(state).oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = body_json(resp).await; // 必须是 JSON 信封,text/plain 会在此 panic
+        assert_eq!(body["error"]["code"], "bad_request");
+        let msg = body["error"]["message"].as_str().unwrap();
+        assert!(!msg.contains("line"), "不得回显 serde 行列号: {msg}");
+    }
+
+    #[tokio::test]
+    async fn login_missing_field_unified_error() {
+        let state = state_with_admin().await;
+        let resp = app(state)
+            .oneshot(json_request(
+                "POST",
+                "/admin/api/login",
+                json!({"email": "a@b.com"}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = body_json(resp).await;
+        assert_eq!(body["error"]["code"], "bad_request");
+        assert!(
+            !body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("password"),
+            "不得回显缺失字段名"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_empty_credentials_unified_401() {
+        let state = state_with_admin().await;
+        let resp = login(&state, "", "").await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(body_json(resp).await["error"]["message"], "邮箱或密码错误");
     }
 
     #[tokio::test]

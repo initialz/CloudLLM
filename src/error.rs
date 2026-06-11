@@ -1,3 +1,4 @@
+use axum::extract::rejection::JsonRejection;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -48,6 +49,18 @@ impl ApiError {
             code: "internal",
             message: "内部错误".into(),
             detail: Some(err.to_string()),
+        }
+    }
+}
+
+impl From<JsonRejection> for ApiError {
+    fn from(rej: JsonRejection) -> Self {
+        // 不回显 serde 细节(字段名/行列号),只给统一文案;原始原因进日志可见的 detail
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            code: "bad_request",
+            message: "请求体不是合法 JSON 或字段缺失".into(),
+            detail: Some(rej.to_string()),
         }
     }
 }
