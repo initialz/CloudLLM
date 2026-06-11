@@ -1,5 +1,6 @@
 //! CloudLLM v2 — Rust 一体化 LLM 网关(hub + admin-ui)。
 
+pub mod auth;
 pub mod config;
 pub mod crypto;
 pub mod db;
