@@ -10,3 +10,8 @@ coverage/
 .playwright-mcp/
 /target
 Cargo.lock.orig
+# CloudLLM 运行期产物(含 master_key/session_secret 明文与凭证哈希),严禁提交
+cloudllm.toml
+cloudllm.db
+cloudllm.db-wal
+cloudllm.db-shm

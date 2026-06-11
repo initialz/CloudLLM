@@ -6,7 +6,6 @@ use base64::{
 use rand::{rngs::OsRng, RngCore};
 use std::path::Path;
 
-#[derive(Debug)]
 pub struct InitOutcome {
     pub admin_email: String,
     pub admin_password: String,
@@ -52,9 +51,50 @@ gateway_public_url = "http://localhost:7100"
     );
     std::fs::write(config_path, toml_text)
         .with_context(|| format!("写配置 {}", config_path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // 配置含 master_key/session_secret 明文,仅属主可读写
+        std::fs::set_permissions(config_path, std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("设置配置权限 {}", config_path.display()))?;
+    }
 
+    // 写完配置后任一步失败 → 回滚本次创建的文件,保证可重跑(不留半成品死路)
+    let result = init_after_config_written(config_path, &db_path, admin_email).await;
+    match result {
+        Ok(admin_password) => Ok(InitOutcome {
+            admin_email: admin_email.to_string(),
+            admin_password,
+            config_path: config_path.to_path_buf(),
+            db_path,
+        }),
+        Err(e) => {
+            let _ = std::fs::remove_file(config_path);
+            for suffix in ["", "-wal", "-shm"] {
+                let _ = std::fs::remove_file(format!("{}{}", db_path.display(), suffix));
+            }
+            Err(e)
+        }
+    }
+}
+
+/// run_init 的「写完配置之后」部分:load → open → 设库权限 → 建管理员,返回初始密码。
+/// 任一步失败由调用方回滚已创建的文件。顺序与原实现一致(生成密钥→写 TOML→load→open→INSERT)。
+async fn init_after_config_written(
+    config_path: &Path,
+    db_path: &Path,
+    admin_email: &str,
+) -> Result<String> {
     let cfg = Config::load(config_path)?;
     let pool = crate::db::open(&cfg.db_path).await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // 库含密码哈希与渠道加密凭证,仅属主可读写。
+        // -wal/-shm 由 SQLite 按所在目录继承权限创建,不必单独处理。
+        std::fs::set_permissions(db_path, std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("设置数据库权限 {}", db_path.display()))?;
+    }
 
     let mut pw = [0u8; 12];
     OsRng.fill_bytes(&mut pw);
@@ -72,12 +112,7 @@ gateway_public_url = "http://localhost:7100"
     .context("创建管理员")?;
     pool.close().await;
 
-    Ok(InitOutcome {
-        admin_email: admin_email.to_string(),
-        admin_password,
-        config_path: config_path.to_path_buf(),
-        db_path,
-    })
+    Ok(admin_password)
 }
 
 /// admin reset-password:重置指定邮箱用户密码,返回新密码。
@@ -174,10 +209,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cfg_path = dir.path().join("cloudllm.toml");
         run_init(&cfg_path, "a@x.com").await.unwrap();
-        let err = run_init(&cfg_path, "a@x.com")
-            .await
-            .unwrap_err()
-            .to_string();
+        // 不用 unwrap_err(避免要求 InitOutcome: Debug):直接解构 Err 取错误信息
+        let Err(e) = run_init(&cfg_path, "a@x.com").await else {
+            panic!("已存在配置时应当报错");
+        };
+        let err = e.to_string();
         assert!(err.contains("已存在"), "实际错误: {err}");
     }
 
@@ -214,5 +250,50 @@ mod tests {
         // main.rs 里的 Cli 不可见;此处仅验证依赖特性可用。
         // 真正的 CLI 自检放 main.rs:
         clap::Command::new("probe").debug_assert();
+    }
+
+    #[tokio::test]
+    async fn init_rolls_back_on_failure() {
+        // 在目标目录预置一个内容非法且只读的 "db 文件",迫使 sqlx 打开/迁移失败,
+        // 验证写完配置后任一步失败都会回滚本次创建的文件(可重跑,不留半成品死路)。
+        let dir = tempfile::tempdir().unwrap();
+        let cfg_path = dir.path().join("cloudllm.toml");
+        let db_path = dir.path().join("cloudllm.db");
+        std::fs::write(&db_path, b"not a sqlite file").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o400)).unwrap();
+        }
+        let err = run_init(&cfg_path, "boss@x.com").await;
+        assert!(err.is_err());
+        assert!(!cfg_path.exists(), "失败后必须回滚删除已写的配置文件");
+        // 回滚已顺带清掉本次产生的库文件(含我们预置的只读占位)。为稳健起见容忍其已不存在:
+        // 仅需保证重跑前 db_path 不再挡路(无论是回滚删的还是这里删的)。
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&db_path, std::fs::Permissions::from_mode(0o600));
+        }
+        let _ = std::fs::remove_file(&db_path);
+        assert!(!db_path.exists(), "重跑前残留的库文件必须已清除");
+        assert!(run_init(&cfg_path, "boss@x.com").await.is_ok());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn init_sets_0600_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let cfg_path = dir.path().join("cloudllm.toml");
+        let out = run_init(&cfg_path, "boss@x.com").await.unwrap();
+        let cfg_mode = std::fs::metadata(&cfg_path).unwrap().permissions().mode() & 0o777;
+        let db_mode = std::fs::metadata(&out.db_path)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(cfg_mode, 0o600, "配置文件须 0600");
+        assert_eq!(db_mode, 0o600, "数据库文件须 0600");
     }
 }

@@ -38,6 +38,7 @@ enum Cmd {
 enum AdminCmd {
     /// 重置用户密码并打印新密码
     ResetPassword {
+        /// 目标用户邮箱
         email: String,
         #[arg(long, default_value = "cloudllm.toml")]
         config: PathBuf,
