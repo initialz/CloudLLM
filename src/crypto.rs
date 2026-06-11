@@ -76,6 +76,12 @@ const NONCE_LEN: usize = 12;
 
 /// 信封加密:输出 = nonce(12B) || ciphertext+tag。
 /// AAD 必填(渠道行 UUID)——密文与行绑定,拷到别的行解不开。
+///
+/// 注:有意不沿用 TS 版(packages/shared/envelope.ts)的双层 data-key 信封——
+/// spec 明确不迁移旧数据、两侧不共库,且凭证轮换 = 整条重新加密,
+/// data-key 层的「轮换主密钥只重加密 data-key」优势用不上,单层更简。
+/// 当前为 v1 单一格式(无版本字节);未来若换算法/格式,需在 blob 头引入
+/// 版本标识并纳入 AAD,避免降级混淆。
 pub fn encrypt_secret(plaintext: &str, master_key: &[u8; 32], aad: &str) -> Result<Vec<u8>> {
     let cipher = Aes256Gcm::new(master_key.into());
     let mut nonce = [0u8; NONCE_LEN];
@@ -194,5 +200,11 @@ mod tests {
     #[test]
     fn envelope_rejects_truncated() {
         assert!(decrypt_secret(&[0u8; 8], &[9u8; 32], "aad").is_err());
+    }
+
+    #[test]
+    fn envelope_rejects_nonce_only_blob() {
+        // 恰好 12 字节 = 只有 nonce、零密文:走长度防护分支拒绝
+        assert!(decrypt_secret(&[0u8; 12], &[9u8; 32], "aad").is_err());
     }
 }
