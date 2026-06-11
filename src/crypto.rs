@@ -1,4 +1,6 @@
-use anyhow::{anyhow, Result};
+use aes_gcm::aead::{Aead, Payload};
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+use anyhow::{anyhow, ensure, Result};
 use argon2::password_hash::{
     rand_core::OsRng as PwOsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
 };
@@ -70,6 +72,45 @@ fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+const NONCE_LEN: usize = 12;
+
+/// 信封加密:输出 = nonce(12B) || ciphertext+tag。
+/// AAD 必填(渠道行 UUID)——密文与行绑定,拷到别的行解不开。
+pub fn encrypt_secret(plaintext: &str, master_key: &[u8; 32], aad: &str) -> Result<Vec<u8>> {
+    let cipher = Aes256Gcm::new(master_key.into());
+    let mut nonce = [0u8; NONCE_LEN];
+    OsRng.fill_bytes(&mut nonce);
+    let ct = cipher
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: plaintext.as_bytes(),
+                aad: aad.as_bytes(),
+            },
+        )
+        .map_err(|_| anyhow!("信封加密失败"))?;
+    let mut out = Vec::with_capacity(NONCE_LEN + ct.len());
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&ct);
+    Ok(out)
+}
+
+pub fn decrypt_secret(blob: &[u8], master_key: &[u8; 32], aad: &str) -> Result<String> {
+    ensure!(blob.len() > NONCE_LEN, "密文过短");
+    let (nonce, ct) = blob.split_at(NONCE_LEN);
+    let cipher = Aes256Gcm::new(master_key.into());
+    let pt = cipher
+        .decrypt(
+            Nonce::from_slice(nonce),
+            Payload {
+                msg: ct,
+                aad: aad.as_bytes(),
+            },
+        )
+        .map_err(|_| anyhow!("信封解密失败(密钥或 AAD 不匹配)"))?;
+    String::from_utf8(pt).map_err(|_| anyhow!("解密结果不是 UTF-8"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,5 +159,40 @@ mod tests {
             hash_api_key("sk-cloudllm-test"),
             "3c5f08c276e14e1f46791c5b08f7f4d41831b792f799f821650d4079ae4e5435"
         );
+    }
+
+    #[test]
+    fn envelope_roundtrip() {
+        let mk = [9u8; 32];
+        let blob = encrypt_secret("sk-upstream-secret", &mk, "channel-uuid-1").unwrap();
+        assert_ne!(blob, b"sk-upstream-secret");
+        let pt = decrypt_secret(&blob, &mk, "channel-uuid-1").unwrap();
+        assert_eq!(pt, "sk-upstream-secret");
+    }
+
+    #[test]
+    fn envelope_nonce_is_random() {
+        let mk = [9u8; 32];
+        let a = encrypt_secret("same", &mk, "aad").unwrap();
+        let b = encrypt_secret("same", &mk, "aad").unwrap();
+        assert_ne!(a, b, "相同明文两次加密必须产生不同密文(随机 nonce)");
+    }
+
+    #[test]
+    fn envelope_rejects_wrong_aad() {
+        let mk = [9u8; 32];
+        let blob = encrypt_secret("s", &mk, "channel-A").unwrap();
+        assert!(decrypt_secret(&blob, &mk, "channel-B").is_err());
+    }
+
+    #[test]
+    fn envelope_rejects_wrong_key() {
+        let blob = encrypt_secret("s", &[9u8; 32], "aad").unwrap();
+        assert!(decrypt_secret(&blob, &[8u8; 32], "aad").is_err());
+    }
+
+    #[test]
+    fn envelope_rejects_truncated() {
+        assert!(decrypt_secret(&[0u8; 8], &[9u8; 32], "aad").is_err());
     }
 }
