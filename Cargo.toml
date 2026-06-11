@@ -3,6 +3,7 @@ name = "cloudllm"
 version = "2.0.0-dev"
 edition = "2021"
 license = "MIT"
+build = "build.rs"
 
 [dependencies]
 axum = "0.7"
@@ -17,7 +18,7 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
-rust-embed = { version = "8", features = ["debug-embed"] }
+rust-embed = { version = "8", features = ["debug-embed", "mime-guess"] }
 argon2 = "0.5"
 aes-gcm = "0.10"
 sha2 = "0.10"

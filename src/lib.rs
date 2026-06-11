@@ -28,6 +28,10 @@ pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .nest("/admin/api", admin::api::router())
+        .route("/admin", get(admin::assets::serve_index))
+        .route("/admin/", get(admin::assets::serve_index))
+        .route("/admin/assets/*path", get(admin::assets::serve_asset))
+        .route("/admin/*spa", get(admin::assets::serve_spa))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)
 }
