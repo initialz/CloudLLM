@@ -242,6 +242,10 @@ pub async fn forward(
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
+    // 主密钥对所有候选一致,提到循环外一次性解码(避免每渠道重复 base64 解码)。
+    // 语义不变:master_key_bytes() 在 validate 后调用,解码失败仍按原路径 panic。
+    let mk = state.config.master_key_bytes();
+
     for channel in ordered {
         let (level, status) = meta
             .get(&channel.id)
@@ -249,7 +253,6 @@ pub async fn forward(
             .unwrap_or((0, "active".into()));
 
         // 解密凭证:失败按渠道故障处理(可重试),冷却并切下一个;细节只进 tracing。
-        let mk = state.config.master_key_bytes();
         let credential = match crate::crypto::decrypt_secret(
             &channel.credential_encrypted,
             &mk,
@@ -346,6 +349,8 @@ pub async fn forward(
             // 不可重试 4xx(如 400):原样透传(状态码 + body),不冷却,不计费。
             let text = resp.text().await.unwrap_or_default();
             // 渠道本身可用(只是该请求被上游拒),清掉历史冷却。
+            // 有意决策:4xx 虽是上游拒绝,但连接已建立、渠道本身健康,据此清历史冷却;
+            // 若上游以 400 表达配额耗尽会误清,接受该边缘(TS 版同样不冷却 4xx)。
             reset_cooldown(state, &channel.id, level, &status).await;
             return Ok(ForwardOk {
                 channel_id: channel.id,
@@ -596,6 +601,73 @@ mod tests {
                 .unwrap();
         assert_eq!(status, "cooldown");
         assert_eq!(level, 1);
+    }
+
+    #[tokio::test]
+    async fn both_channels_5xx_cascades_cooldown_then_upstream_failed() {
+        // 级联失败:两个渠道上游都 503 → 逐个冷却 → 候选耗尽 → upstream_failed。
+        let bad1 = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&bad1)
+            .await;
+        let bad2 = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&bad2)
+            .await;
+        let state = test_state().await;
+        let mk = state.config.master_key_bytes();
+        // 权重随意;无论洗牌顺序,两个渠道都会被各试一次后双双冷却。
+        let id1 = insert_channel(
+            &state.db,
+            &mk,
+            "openai",
+            &format!("{}/v1", bad1.uri()),
+            "sk-bad1",
+            1,
+            "active",
+        )
+        .await;
+        let id2 = insert_channel(
+            &state.db,
+            &mk,
+            "openai",
+            &format!("{}/v1", bad2.uri()),
+            "sk-bad2",
+            5,
+            "active",
+        )
+        .await;
+        let m = openai_model("gpt-4o");
+        let err = forward(
+            &state,
+            Protocol::Openai,
+            &m,
+            &json!({"model":"gpt-x"}),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.code, "upstream_failed");
+        // 两个渠道都应被冷却:status='cooldown'、level=1、cooldown_until>now
+        let now = crate::now_epoch();
+        for id in [&id1, &id2] {
+            let (status, level, until): (String, i64, Option<i64>) = sqlx::query_as(
+                "SELECT status, cooldown_level, cooldown_until FROM channels WHERE id = ?",
+            )
+            .bind(id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+            assert_eq!(status, "cooldown", "渠道 {id} 应冷却");
+            assert_eq!(level, 1, "渠道 {id} 冷却层级应为 1");
+            assert!(
+                until.is_some_and(|u| u > now),
+                "渠道 {id} cooldown_until 应在未来,实际 {until:?}"
+            );
+        }
     }
 
     #[tokio::test]
