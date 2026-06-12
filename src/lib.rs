@@ -8,6 +8,7 @@ pub mod config;
 pub mod crypto;
 pub mod db;
 pub mod error;
+pub mod gateway;
 #[cfg(test)]
 pub(crate) mod test_util;
 
