@@ -15,6 +15,7 @@ pub fn router() -> Router<AppState> {
         .route("/login", post(login))
         .route("/logout", post(logout))
         .route("/me", get(me))
+        .merge(super::users::router())
         // 未匹配的 /admin/api/* 必须是 JSON 404,不得回退到 SPA HTML
         .fallback(api_not_found)
 }
