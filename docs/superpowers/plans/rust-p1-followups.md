@@ -52,8 +52,8 @@ P3 管理面(登录强化 + admin-ui 11 页)交付期间新发现/有意取舍�
 |---|---|---|---|
 | P3-1 | 登录限速为进程内存态(失败计数存内存,重启清零) | admin/api.rs login 限速 | 单实例可接受;多实例或需重启不丢计数时改 Redis/DB 后端 |
 | P3-2 | 限速来源维度取 XFF/对端 IP,XFF 可伪造 | admin/api.rs 限速取 IP | 内网/可信反代威胁模型接受;直面公网需校验可信反代链或改账号维度为主 |
-| P3-3 | audit-requests 列表接口单页含 request/response_body,理论最大约 12.8MB(100×128KB) | admin/keys.rs 或 admin audit 列表 | 大请求体高频审计时:建议 P4 列表只返回截断预览 + 独立详情接口取全文 |
+| P3-3 | audit-requests 列表接口单页含 request/response_body,UI 每页 50 行,单页最坏约 12.8MB(50 行 × request+response 各 128KB) | admin/keys.rs 或 admin audit 列表 | 大请求体高频审计时:建议 P4 列表只返回截断预览 + 独立详情接口取全文 |
 | P3-4 | admin-ui 无自动化测试(Playwright 浏览器冒烟为人工,vitest 未引入) | admin-ui | 回归面变大时引入 vitest 组件测试 + Playwright e2e |
-| P3-5 | admin-ui 徽标壳(OwnerBadge 等)与列表页 load/error/Modal 样板重复(8 页),抽象债 | admin-ui pages/* | P4 统一抽 useListPage hook + 通用 EntityBadge,降重复 |
+| P3-5 | admin-ui 徽标壳(OwnerBadge 等)与列表页 load/error/Modal 样板重复(8 页)+ 手写 SVG 图基元(Dashboard AreaChart 与 Reports DayChart 共享坐标计算,可抽公共几何),抽象债 | admin-ui pages/* | P4 统一抽 useListPage hook + 通用 EntityBadge,降重复 |
 | P3-6 | AuthContext 在 StrictMode 开发态会双发 me()(React 双调用副作用) | admin-ui AuthContext.tsx | 仅开发态;生产构建无 StrictMode 双发,无影响 |
 | P3-7 | Channels weight 空串 Number('')=0 仅后端拦(P3 已补前端就地提示,但依赖前端) | admin-ui Channels.tsx | 已前端拦正整数;若绕过前端直打 API,后端仍兜底 400 |

@@ -96,6 +96,8 @@ function Pager({
 
 function prettyJson(raw: string | null): string {
   if (raw === null) return '—';
+  // audit body 上限可达 128KB,主线程同步美化大体积会卡顿 → 超 64KB 直接原样渲染
+  if (raw.length > 64 * 1024) return raw;
   try {
     return JSON.stringify(JSON.parse(raw), null, 2);
   } catch {
