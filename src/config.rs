@@ -62,7 +62,7 @@ impl std::fmt::Debug for Config {
 }
 
 fn default_listen() -> String {
-    "0.0.0.0:7100".into()
+    "0.0.0.0:7200".into()
 }
 fn default_db_path() -> String {
     "./cloudllm.db".into()
@@ -212,7 +212,7 @@ mod tests {
         let mut cfg: Config = toml::from_str(&base_toml()).unwrap();
         cfg.apply_overrides(|_| None);
         cfg.validate().unwrap();
-        assert_eq!(cfg.listen, "0.0.0.0:7100");
+        assert_eq!(cfg.listen, "0.0.0.0:7200");
         assert_eq!(cfg.db_path, "./cloudllm.db");
         assert_eq!(cfg.master_key_bytes(), [7u8; 32]);
     }

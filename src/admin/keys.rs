@@ -247,7 +247,7 @@ async fn create(
     let (gateway_url, gateway_url_configured) = match &state.config.gateway_public_url {
         Some(u) => (u.clone(), true),
         None => {
-            let port = state.config.listen.rsplit(':').next().unwrap_or("7100");
+            let port = state.config.listen.rsplit(':').next().unwrap_or("7200");
             (format!("http://localhost:{port}"), false)
         }
     };

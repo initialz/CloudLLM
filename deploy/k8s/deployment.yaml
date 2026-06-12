@@ -33,7 +33,7 @@ spec:
           # 替换 <registry>/<tag>;tag 推荐 git commit SHA
           image: <registry>/cloudllm:<tag>
           ports:
-            - containerPort: 7100
+            - containerPort: 7200
               protocol: TCP
           env:
             # 成员接入说明中展示的网关对外地址,与 Ingress host 一致
@@ -48,13 +48,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 7100
+              port: 7200
             initialDelaySeconds: 3
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /healthz
-              port: 7100
+              port: 7200
             initialDelaySeconds: 10
             periodSeconds: 20
           resources:
