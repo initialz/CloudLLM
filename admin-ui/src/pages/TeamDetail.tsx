@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError, type TeamDetail as TeamDetailData } from '../lib/api';
 import { Button, ErrorBar, Input, Select, Table } from '../components/ui';
@@ -28,20 +28,29 @@ export default function TeamDetail() {
   const [role, setRole] = useState('member');
   const [busy, setBusy] = useState(false);
 
-  async function load() {
+  // 竞态守护:每次请求取递增 reqId,响应回来时若已不是最新(id 切换或新 load 发起)则丢弃,避免旧团队慢响应覆盖新团队
+  const reqIdRef = useRef(0);
+
+  const load = useCallback(async () => {
+    const reqId = ++reqIdRef.current;
     setError(null);
     try {
       const detail = await api.teams.detail(id);
+      if (reqId !== reqIdRef.current) return;
       setTeam(detail);
     } catch (e) {
+      if (reqId !== reqIdRef.current) return;
       setError(e instanceof ApiError ? e.message : '网络错误');
     }
-  }
+  }, [id]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+    // 卸载/id 切换时让在途请求失效
+    return () => {
+      reqIdRef.current++;
+    };
+  }, [load]);
 
   async function addMember(e: React.FormEvent) {
     e.preventDefault();
@@ -69,7 +78,8 @@ export default function TeamDetail() {
     }
   }
 
-  async function remove(userId: string) {
+  async function remove(userId: string, email: string) {
+    if (!window.confirm(`移除成员 ${email}?`)) return;
     setError(null);
     try {
       await api.teams.removeMember(id, userId);
@@ -149,7 +159,7 @@ export default function TeamDetail() {
                       设为 owner
                     </Button>
                   )}
-                  <Button variant="danger" onClick={() => remove(m.user_id)}>
+                  <Button variant="danger" onClick={() => remove(m.user_id, m.email)}>
                     移除
                   </Button>
                 </div>

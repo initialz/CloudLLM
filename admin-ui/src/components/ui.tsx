@@ -326,6 +326,23 @@ export function Badge({ status }: { status: string }) {
   );
 }
 
+/* ───────────────────────── 渠道类型徽标 ───────────────────────── */
+
+/** 渠道/模型类型徽标:openai=neon、anthropic=violet */
+export function ProviderBadge({ type }: { type: 'openai' | 'anthropic' }) {
+  const openai = type === 'openai';
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[11px] tracking-wider ${
+        openai ? 'border-neon/50 bg-neon/10 text-neon' : 'border-violet/50 bg-violet/10 text-violet'
+      }`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {type}
+    </span>
+  );
+}
+
 /* ───────────────────────── 复制按钮 ───────────────────────── */
 
 // 非安全上下文(如 http 内网)下 navigator.clipboard 不可用,用临时 textarea + execCommand 回退

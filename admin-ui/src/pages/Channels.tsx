@@ -1,22 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, type Channel } from '../lib/api';
 import { fmtUntil } from '../lib/format';
-import { Badge, Button, ErrorBar, Input, Modal, PageHeader, Select, Table } from '../components/ui';
-
-/** 渠道类型徽标:openai=neon、anthropic=violet */
-function ProviderBadge({ type }: { type: 'openai' | 'anthropic' }) {
-  const openai = type === 'openai';
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[11px] tracking-wider ${
-        openai ? 'border-neon/50 bg-neon/10 text-neon' : 'border-violet/50 bg-violet/10 text-violet'
-      }`}
-    >
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {type}
-    </span>
-  );
-}
+import { Badge, Button, ErrorBar, Input, Modal, PageHeader, ProviderBadge, Select, Table } from '../components/ui';
 
 export default function Channels() {
   const [channels, setChannels] = useState<Channel[] | null>(null);

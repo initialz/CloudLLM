@@ -107,7 +107,13 @@ export default function Users() {
               render: (u) => (
                 <div className="flex gap-2">
                   {u.status === 'active' ? (
-                    <Button variant="ghost" onClick={() => update(u.id, { status: 'disabled' })}>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        if (!window.confirm(`停用用户 ${u.email}?其名下 Key 将立即失效。`)) return;
+                        update(u.id, { status: 'disabled' });
+                      }}
+                    >
                       停用
                     </Button>
                   ) : (
