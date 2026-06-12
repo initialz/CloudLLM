@@ -3,5 +3,6 @@
 pub mod auth;
 pub mod error;
 pub mod sse_tap;
+pub mod upstream;
 
 pub use crate::billing::Protocol;
