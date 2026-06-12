@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudllm
+  namespace: cloudllm
+  labels:
+    app.kubernetes.io/name: cloudllm
+    app.kubernetes.io/part-of: cloudllm
+spec:
+  # SQLite 单写者:副本数固定 1,勿调;扩容需求出现时先换存储引擎
+  replicas: 1
+  # Recreate 杜绝滚动升级期两个 pod 同挂一库(WAL 损坏风险);代价是升级有秒级停机
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudllm
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cloudllm
+        app.kubernetes.io/part-of: cloudllm
+    spec:
+      # 排水契约:preStop 5s + 应用排水 25s(shutdown_drain_secs 默认)+ 余量 5s = 35
+      terminationGracePeriodSeconds: 35
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+        - name: cloudllm
+          # 替换 <registry>/<tag>;tag 推荐 git commit SHA
+          image: <registry>/cloudllm:<tag>
+          ports:
+            - containerPort: 7100
+              protocol: TCP
+          env:
+            # 成员接入说明中展示的网关对外地址,与 Ingress host 一致
+            - name: CLOUDLLM_GATEWAY_PUBLIC_URL
+              value: "https://llm.<domain>"
+            # 会话 cookie 仅 HTTPS 下传(经 Ingress TLS 终结时开启)
+            - name: CLOUDLLM_COOKIE_SECURE
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 7100
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 7100
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: cloudllm-data

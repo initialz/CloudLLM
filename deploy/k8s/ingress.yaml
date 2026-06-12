@@ -1,59 +1,32 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: cloudllm-ingress
+  name: cloudllm
   namespace: cloudllm
   labels:
-    app.kubernetes.io/name: cloudllm-ingress
+    app.kubernetes.io/name: cloudllm
     app.kubernetes.io/part-of: cloudllm
   annotations:
-    # ── Ingress Controller 注解（按公司环境修改）────────────────────────────────
-    # nginx-ingress 示例（取消注释并按需调整）：
-    # kubernetes.io/ingress.class: "nginx"
-    # nginx.ingress.kubernetes.io/proxy-read-timeout: "300"    # 流式响应需要较长超时
+    # nginx-ingress 流式(SSE)必需项,按控制器调整:
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     # nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-    # nginx.ingress.kubernetes.io/proxy-buffering: "off"       # 流式响应关闭缓冲
-    #
-    # AWS ALB 示例：
-    # kubernetes.io/ingress.class: "alb"
-    # alb.ingress.kubernetes.io/scheme: "internal"
-    #
-    # TLS/cert-manager 示例（取消注释）：
+    # nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    # TLS/cert-manager:
     # cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    # ──────────────────────────────────────────────────────────────────────────
 spec:
-  # ── IngressClass（按公司环境修改或删除，使用默认 IngressClass）──────────────
   # ingressClassName: nginx
   rules:
-    # ── Gateway：API 端点，供调用方使用 ─────────────────────────────────────
-    # 替换 <domain> 为实际域名，例如 api.llm.company.com
-    - host: api.<domain>
+    # 替换 <domain>;网关(/v1)与管理台(/admin)同一域名同一服务
+    - host: llm.<domain>
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: cloudllm-gateway
+                name: cloudllm
                 port:
-                  number: 80
-    # ── Console：管理后台 ───────────────────────────────────────────────────
-    # 替换 <domain> 为实际域名，例如 console.llm.company.com
-    - host: console.<domain>
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: cloudllm-console
-                port:
-                  number: 80
-  # ── TLS（按公司 TLS 策略配置，取消注释）──────────────────────────────────
+                  number: 7100
   # tls:
-  #   - hosts:
-  #       - api.<domain>
-  #     secretName: cloudllm-gateway-tls
-  #   - hosts:
-  #       - console.<domain>
-  #     secretName: cloudllm-console-tls
+  #   - hosts: [llm.<domain>]
+  #     secretName: cloudllm-tls

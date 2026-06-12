@@ -1,22 +1,15 @@
+# CloudLLM 单服务 compose:docker compose up -d --build 即起全部功能。
+# 初始管理员密码看日志:docker compose logs cloudllm | grep 初始密码
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: cloudllm
-      POSTGRES_PASSWORD: cloudllm_dev
-      POSTGRES_DB: cloudllm
+  cloudllm:
+    build: .
     ports:
-      - "5432:5432"
+      - "7100:7100"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cloudllm -d cloudllm"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
+      - cloudllm-data:/data
+    environment:
+      # 接入说明里展示给成员的网关地址,按实际部署改
+      CLOUDLLM_GATEWAY_PUBLIC_URL: "http://localhost:7100"
+    restart: unless-stopped
 volumes:
-  pgdata:
+  cloudllm-data:

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudllm
+  namespace: cloudllm
+  labels:
+    app.kubernetes.io/name: cloudllm
+    app.kubernetes.io/part-of: cloudllm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: cloudllm
+  ports:
+    - name: http
+      port: 7100
+      targetPort: 7100

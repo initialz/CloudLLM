@@ -1,45 +1,38 @@
 name: ci
+
 on:
   push:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  ci:
+  rust:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: cloudllm
-          POSTGRES_PASSWORD: cloudllm_dev
-          POSTGRES_DB: cloudllm
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U cloudllm" --health-interval 5s
-          --health-timeout 5s --health-retries 10
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+
+  admin-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm typecheck
-      - run: pnpm --filter @cloudllm/db migrate
-        env:
-          DATABASE_URL: postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm
-      - run: pnpm test
-        env:
-          DATABASE_URL: postgres://cloudllm:cloudllm_dev@localhost:5432/cloudllm
-          REDIS_URL: redis://localhost:6379
-      - name: drizzle drift check
-        run: |
-          cd packages/db
-          npx drizzle-kit generate
-          git diff --exit-code migrations
+          cache: npm
+          cache-dependency-path: admin-ui/package-lock.json
+      - run: npm ci
+        working-directory: admin-ui
+      # build 含 tsc --noEmit,类型错误即红
+      - run: npm run build
+        working-directory: admin-ui
