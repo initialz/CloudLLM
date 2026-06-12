@@ -3329,6 +3329,7 @@ git commit -m "feat(rust): P2-T10 真二进制冒烟收口 + P1/P2 遗留清单�
 | 9 | **owner_type 仅 user/team**:预算主体两级(key + owner),无 app→team 三级展开 | 0001 api_keys.owner_type 仅 user/team(TS 有 app 类型 + apps.teamId join)。subjects_for_key 简化 |
 | 10 | **GatewayError 独立于管理面 ApiError** | 网关错误体协议感知(OpenAI/Anthropic 双格式),与管理面 `{"error":{code,message}}` 不同 |
 | 11 | **真二进制完整对账推迟到 P3 验收** | P2 无渠道写入 API(信封加密渠道需 admin API,P3 才有);P2 计费对账由 T8 wiremock 端到端保证 |
+| 12 | **OpenAI 流式中断且未收到 usage 事件时按零计费,不估算输入侧** | spec §3.3 的「按已传输内容估算输入侧」未实现(终审登记):OpenAI 的 include_usage 只在流尾发 usage,尾前中断 = 零 usage = 零计费(client_abort 落账,cost=0)。敞口有界:仅 OpenAI 中断、只少记输入,宁少不多;Anthropic 因 message_start 早带 input 不受影响。如需估算(已读字节粗估)由 P3 排期 |
 
 ---
 

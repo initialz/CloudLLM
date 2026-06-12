@@ -38,3 +38,4 @@ P1 遗留 #1(登录限速 + 失败登录 audit)属管理面,P2 未触及,顺延 
 | P2R-4 | config env 解析失败静默保默认(与 P1 风格一致) | config.rs apply_overrides | 可加 warn 日志,排障期更友好 |
 | P2R-5 | reqwest rustls 不读系统证书,私有 CA 上游需额外配置(同 P2-5,确认在列) | build_http_client | 私有 CA / 企业网上游上线前 |
 | P2R-6 | check_budgets DB 读失败 fail-open(计划明定的可用性取舍,运维需知) | billing.rs | 严格硬预算场景需改 fail-close(同 P2-2) |
+| P2R-7 | OpenAI 流式中断且无 usage 事件 → 零计费(不估算输入侧;spec §3.3 估算项未实现,差异清单 #12) | gateway/sse_tap.rs、gateway/mod.rs | 中断流量占比可观、需挽回输入侧成本时(P3 酌情实现粗估) |
