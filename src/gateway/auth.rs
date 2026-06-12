@@ -39,6 +39,7 @@ pub fn extract_raw_key(protocol: Protocol, headers: &HeaderMap) -> Option<String
                     // 容忍多空格/混合大小写:正则 ^Bearer\s+ 的等价处理
                     let lower = trimmed.to_ascii_lowercase();
                     if lower.starts_with("bearer") {
+                        // starts_with("bearer") 保证前 6 字节为 ASCII,字节索引 6 必为字符边界,切片不会 panic
                         Some(trimmed[6..].trim_start())
                     } else {
                         None
@@ -87,7 +88,15 @@ pub async fn authenticate(
         row.ok_or_else(|| GatewayError::invalid_api_key(protocol, "API Key 无效或已停用"))?;
 
     let allowed_models: Option<Vec<String>> = match allowed_json {
-        Some(j) => serde_json::from_str(&j).ok(),
+        // 白名单数据损坏时宁拒不放:解析失败 → 视为空白名单 Some(vec![]),任何模型都 403。
+        // TS 版是原生类型数组无此边界,这是 Rust 引入 JSON 列后的显式 fail-closed 决策。
+        Some(j) => match serde_json::from_str::<Vec<String>>(&j) {
+            Ok(list) => Some(list),
+            Err(e) => {
+                tracing::error!(key_id = %id, error = %e, "allowed_models JSON 损坏,fail-closed 为空白名单");
+                Some(Vec::new())
+            }
+        },
         None => None,
     };
     if let Some(ref list) = allowed_models {
@@ -307,6 +316,29 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(key.owner_id, "u1");
+    }
+
+    #[tokio::test]
+    async fn corrupt_allowed_models_fail_closed_403() {
+        let state = test_state().await;
+        let (id, pt) = insert_api_key(&state.db, "user", "u1", None, false, "active", None).await;
+        // 手工把白名单列写成非法 JSON,模拟数据损坏
+        sqlx::query("UPDATE api_keys SET allowed_models = 'not-json' WHERE id = ?")
+            .bind(&id)
+            .execute(&state.db)
+            .await
+            .unwrap();
+        // 损坏时 fail-closed:任意模型都被拒
+        let err = authenticate(
+            &state,
+            Protocol::Openai,
+            &headers_bearer(&format!("Bearer {pt}")),
+            "any-model",
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status.as_u16(), 403);
+        assert_eq!(err.code, "model_not_allowed");
     }
 
     #[tokio::test]
