@@ -1,5 +1,7 @@
 # Rust 重写 P1 遗留清单(P2/P3 时认领)
 
+> **P4 总结(2026-06-12)。** P4 为替换交付阶段——TS 版已全部删除(`apps`/`packages`/旧 compose/旧 K8s/旧 CI)。交付物:单镜像 Dockerfile(node→rust→debian-slim 三段构建,非 root,`/data` 卷)、单服务 `docker-compose.yml`、`deploy/k8s` 单 Deployment + PVC(`Recreate`,排水契约 35s)、README 重写(含 v1 迁移说明)、`deploy/e2e` 镜像级验收(mock 上游全链路,73500 micro 精确对账)。**P4 不动功能面代码,所有历史遗留不在 P4 认领,后续认领由运行反馈驱动。**
+
 P1 各任务评审确认接受但未实现的事项。每条标注触发条件,实现时从本清单划掉。
 
 | # | 事项 | 位置 | 触发条件 / 归属 |
@@ -46,6 +48,8 @@ P1 遗留 #1(登录限速 + 失败登录 audit)属管理面,P2 未触及,顺延 
 
 ## P3 自身遗留(P4 酌情认领)
 
+> P4 说明:P4 为替换交付阶段(删 TS/Docker/K8s/README/e2e),不动功能面代码,下表各项 **P4 未认领,触发条件不变**。P3-3 的"列表截断预览"顺延至出现真实大体量审计场景时。
+
 P3 管理面(登录强化 + admin-ui 11 页)交付期间新发现/有意取舍的事项。
 
 | # | 事项 | 位置 | 触发条件 / 说明 |
@@ -57,3 +61,12 @@ P3 管理面(登录强化 + admin-ui 11 页)交付期间新发现/有意取舍�
 | P3-5 | admin-ui 徽标壳(OwnerBadge 等)与列表页 load/error/Modal 样板重复(8 页)+ 手写 SVG 图基元(Dashboard AreaChart 与 Reports DayChart 共享坐标计算,可抽公共几何),抽象债 | admin-ui pages/* | P4 统一抽 useListPage hook + 通用 EntityBadge,降重复 |
 | P3-6 | AuthContext 在 StrictMode 开发态会双发 me()(React 双调用副作用) | admin-ui AuthContext.tsx | 仅开发态;生产构建无 StrictMode 双发,无影响 |
 | P3-7 | Channels weight 空串 Number('')=0 仅后端拦(P3 已补前端就地提示,但依赖前端) | admin-ui Channels.tsx | 已前端拦正整数;若绕过前端直打 API,后端仍兜底 400 |
+
+## P4 自身遗留
+
+P4 替换交付(删 TS / Docker / K8s / README / e2e)执行期间实际发现的事项。
+
+| # | 事项 | 位置 | 触发条件 / 说明 |
+|---|---|---|---|
+| P4-1 | e2e 宿主端口 17100 写死,被占则脚本失败(trap 会清理,无残留) | deploy/e2e/run.sh | 本机验收脚本定位可接受;要并行跑再参数化 |
+| P4-2 | 运行镜像内 cloudllm 用户组 gid=999(`useradd --user-group` 自动分配),与 K8s `runAsGroup`/`fsGroup` 65532 不一致;K8s 下 fsGroup 接管卷属组无碍,docker 裸跑亦验证可写 | Dockerfile | 仅当有"镜像内外 gid 必须一致"的合规要求时改 `groupadd --gid 65532` |

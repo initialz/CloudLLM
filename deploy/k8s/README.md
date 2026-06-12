@@ -100,6 +100,11 @@ kubectl -n cloudllm rollout status deploy/cloudllm --timeout=60s
 # 2) 临时起一个挂同一 PVC 的辅助 pod 拷文件,例如:
 kubectl -n cloudllm run cloudllm-backup --restart=Never --image=busybox:1.36 \
   --overrides='{"spec":{"securityContext":{"fsGroup":65532},"containers":[{"name":"cloudllm-backup","image":"busybox:1.36","command":["sleep","3600"],"volumeMounts":[{"name":"data","mountPath":"/data"}]}],"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"cloudllm-data"}}]}}'
+
+# RWO 卷在部分存储后端(如本地盘 / 多数云盘 CSI)是 node 亲和的——卷只能挂在它当前所在节点上。
+# helper pod 若被调度到别的节点,会一直 Pending(卷挂不上)。遇到这种情况,在上面的 overrides
+# 里加 nodeName(原 cloudllm pod 所在节点,先 kubectl -n cloudllm get pod -o wide 查)或等价的
+# nodeSelector,把 helper pod 钉到原节点即可。
 kubectl -n cloudllm cp cloudllm-backup:/data/cloudllm.db   ./cloudllm.db
 kubectl -n cloudllm cp cloudllm-backup:/data/cloudllm.toml ./cloudllm.toml
 kubectl -n cloudllm delete pod cloudllm-backup
