@@ -1,5 +1,7 @@
 pub mod api;
 pub mod assets;
+pub mod handout;
+pub mod keys;
 pub mod limiter;
 pub mod teams;
 pub mod users;
