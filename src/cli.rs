@@ -143,6 +143,9 @@ pub async fn run_serve(config_path: &Path) -> Result<()> {
     let state = crate::AppState {
         db: pool.clone(),
         config: std::sync::Arc::new(cfg.clone()),
+        http: crate::build_http_client(&cfg),
+        settle_tracker: tokio_util::task::TaskTracker::new(),
+        settle_failures: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
     };
     let listener = tokio::net::TcpListener::bind(&cfg.listen)
         .await

@@ -20,9 +20,13 @@ pub fn test_config() -> Config {
 }
 
 pub async fn test_state() -> AppState {
+    let config = Arc::new(test_config());
     AppState {
         db: crate::db::open_memory().await.expect("内存库"),
-        config: Arc::new(test_config()),
+        http: crate::build_http_client(&config),
+        config,
+        settle_tracker: tokio_util::task::TaskTracker::new(),
+        settle_failures: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     }
 }
 
@@ -82,5 +86,129 @@ pub async fn insert_user(
     .execute(db)
     .await
     .expect("插入用户");
+    id
+}
+
+/// 插入渠道,返回 channel_id。credential 用 master_key 信封加密(AAD=channel_id)。
+pub async fn insert_channel(
+    db: &sqlx::SqlitePool,
+    master_key: &[u8; 32],
+    provider_type: &str,
+    base_url: &str,
+    credential: &str,
+    weight: i64,
+    status: &str,
+) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let blob = crate::crypto::encrypt_secret(credential, master_key, &id).expect("加密凭证");
+    sqlx::query(
+        "INSERT INTO channels (id, provider_type, name, base_url, credential_encrypted, weight, status, cooldown_until, cooldown_level, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, ?)",
+    )
+    .bind(&id)
+    .bind(provider_type)
+    .bind(format!("ch-{provider_type}"))
+    .bind(base_url)
+    .bind(blob)
+    .bind(weight)
+    .bind(status)
+    .bind(crate::now_epoch())
+    .execute(db)
+    .await
+    .expect("插入渠道");
+    id
+}
+
+/// 插入模型,价格单位 micro-CNY / 1M tokens。返回 slug(原样回传方便链式)。
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_model(
+    db: &sqlx::SqlitePool,
+    slug: &str,
+    provider_type: &str,
+    upstream_model: &str,
+    input_price_micro: i64,
+    output_price_micro: i64,
+    cache_read_price_micro: i64,
+    cache_write_price_micro: i64,
+) -> String {
+    sqlx::query(
+        "INSERT INTO models (id, slug, provider_type, upstream_model, input_price_micro, output_price_micro, cache_read_price_micro, cache_write_price_micro, status, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(slug)
+    .bind(provider_type)
+    .bind(upstream_model)
+    .bind(input_price_micro)
+    .bind(output_price_micro)
+    .bind(cache_read_price_micro)
+    .bind(cache_write_price_micro)
+    .bind(crate::now_epoch())
+    .execute(db)
+    .await
+    .expect("插入模型");
+    slug.to_string()
+}
+
+/// 插入 API Key。返回 (key_id, plaintext)。allowed_models 传 None=不限;Some(slugs)=白名单。
+pub async fn insert_api_key(
+    db: &sqlx::SqlitePool,
+    owner_type: &str,
+    owner_id: &str,
+    allowed_models: Option<&[&str]>,
+    audit: bool,
+    status: &str,
+    expires_at: Option<i64>,
+) -> (String, String) {
+    let id = uuid::Uuid::new_v4().to_string();
+    let gen = crate::crypto::generate_api_key();
+    let allowed = allowed_models.map(|m| serde_json::to_string(m).expect("序列化白名单"));
+    sqlx::query(
+        "INSERT INTO api_keys (id, key_hash, key_prefix, name, owner_type, owner_id, allowed_models, audit, status, expires_at, created_at) \
+         VALUES (?, ?, ?, 'test-key', ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&id)
+    .bind(&gen.key_hash)
+    .bind(&gen.key_prefix)
+    .bind(owner_type)
+    .bind(owner_id)
+    .bind(allowed)
+    .bind(audit as i64)
+    .bind(status)
+    .bind(expires_at)
+    .bind(crate::now_epoch())
+    .execute(db)
+    .await
+    .expect("插入 Key");
+    (id, gen.plaintext)
+}
+
+/// 插入预算行。金额 micro-CNY;period_start 传 epoch 秒。
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_budget(
+    db: &sqlx::SqlitePool,
+    subject_type: &str,
+    subject_id: &str,
+    period: &str,
+    limit_micro: i64,
+    used_micro: i64,
+    period_start: i64,
+) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO budgets (id, subject_type, subject_id, period, limit_micro, used_micro, period_start, alert_threshold, status, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'active', ?)",
+    )
+    .bind(&id)
+    .bind(subject_type)
+    .bind(subject_id)
+    .bind(period)
+    .bind(limit_micro)
+    .bind(used_micro)
+    .bind(period_start)
+    .bind(crate::now_epoch())
+    .execute(db)
+    .await
+    .expect("插入预算");
     id
 }
