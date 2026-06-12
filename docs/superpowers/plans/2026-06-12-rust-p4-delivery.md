@@ -544,7 +544,7 @@ git commit -m "chore(rust): P4-T4 CI 收口——rust-ci 更名唯一 ci,admin-u
    ./target/release/cloudllm init            # 打印初始管理员密码(仅一次)
    ./target/release/cloudllm serve           # 默认 0.0.0.0:7100
    ```
-   打开 http://localhost:7100 登录管理台。
+   打开 http://localhost:7100/admin 登录管理台(根路径是网关协议面,管理台挂在 /admin)。
 5. **快速开始(Docker)**:`docker compose up -d --build`;初始密码 `docker compose logs cloudllm | grep 初始密码`;数据持久化在 named volume `cloudllm-data`。
 6. **配置参考**:cloudllm.toml 全字段表(字段 / 默认值 / 说明 / env 覆盖名)——14 个字段照 src/config.rs 抄全:listen(0.0.0.0:7100)、db_path(./cloudllm.db)、master_key(必填,base64 32B)、session_secret(必填,≥32 字符)、gateway_public_url、upstream_connect_timeout_secs(10)、upstream_timeout_secs(300)、cooldown_base_secs(30)、cooldown_max_secs(600)、audit_body_limit(65536)、audit_retention_days(30)、max_body_bytes(2MiB)、shutdown_drain_secs(25)、cookie_secure(false)。注明:env 覆盖 TOML;配置文件 0600;master_key 丢失=已存渠道凭证不可恢复。
 7. **K8s 部署**:指向 `deploy/k8s/README.md`;正文只放三行要点(replicas=1+Recreate 原因、排水契约 5+25≤35、初始密码看 pod 日志)。
@@ -670,7 +670,8 @@ done
 ok "healthz 200"
 
 say "断言嵌入的是真实 UI(非占位页)"
-INDEX=$(curl -fsS "$BASE/")
+# SPA 挂在 /admin 下(根路径是网关协议面,无 SPA fallback)
+INDEX=$(curl -fsS "$BASE/admin/")
 echo "$INDEX" | grep -q 'assets/index-' || die "index.html 缺 vite 产物指纹"
 echo "$INDEX" | grep -q '尚未构建' && die "镜像内仍是占位页(build.rs 占位逻辑被触发)"
 ok "真实 admin-ui 已嵌入"
