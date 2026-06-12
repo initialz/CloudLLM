@@ -48,7 +48,21 @@ pub fn extract_raw_key(protocol: Protocol, headers: &HeaderMap) -> Option<String
                 .unwrap_or(trimmed);
             Some(rest.trim().to_string())
         }
-        Protocol::Anthropic => Some(headers.get("x-api-key")?.to_str().ok()?.to_string()),
+        Protocol::Anthropic => {
+            // 优先 x-api-key(Anthropic 原生);回退 Authorization: Bearer——
+            // Claude Code 配 ANTHROPIC_AUTH_TOKEN 时只发 Bearer 头(handout 教的就是这个配置)
+            if let Some(v) = headers.get("x-api-key") {
+                return Some(v.to_str().ok()?.to_string());
+            }
+            let v = headers.get("authorization")?.to_str().ok()?.trim();
+            // 与 Openai 分支一致:大小写容忍的 "bearer" 前缀
+            if v.to_ascii_lowercase().starts_with("bearer") {
+                // starts_with("bearer") 保证前 6 字节为 ASCII,字节索引 6 必为字符边界
+                Some(v[6..].trim_start().trim().to_string())
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -190,6 +204,23 @@ mod tests {
             Some("sk-cloudllm-abc")
         );
         let h = headers_xapikey("sk-cloudllm-xyz");
+        assert_eq!(
+            extract_raw_key(Protocol::Anthropic, &h).as_deref(),
+            Some("sk-cloudllm-xyz")
+        );
+    }
+
+    #[test]
+    fn anthropic_accepts_bearer_fallback() {
+        // Claude Code 配 ANTHROPIC_AUTH_TOKEN 时发 Authorization: Bearer,不发 x-api-key
+        let mut h = HeaderMap::new();
+        h.insert("authorization", "Bearer sk-cloudllm-abc".parse().unwrap());
+        assert_eq!(
+            extract_raw_key(Protocol::Anthropic, &h).as_deref(),
+            Some("sk-cloudllm-abc")
+        );
+        // x-api-key 仍然优先
+        h.insert("x-api-key", "sk-cloudllm-xyz".parse().unwrap());
         assert_eq!(
             extract_raw_key(Protocol::Anthropic, &h).as_deref(),
             Some("sk-cloudllm-xyz")

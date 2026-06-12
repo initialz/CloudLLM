@@ -7,6 +7,7 @@ use axum::body::Body;
 use axum::http::{header, Request, Response};
 use http_body_util::BodyExt;
 use std::sync::Arc;
+use tower::ServiceExt;
 
 pub const TEST_MASTER_KEY: &str = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc="; // base64([7u8;32])
 pub const TEST_SESSION_SECRET: &str = "test-session-secret-0123456789abcdef";
@@ -20,7 +21,12 @@ pub fn test_config() -> Config {
 }
 
 pub async fn test_state() -> AppState {
-    let config = Arc::new(test_config());
+    test_state_with_config(test_config()).await
+}
+
+/// 用指定配置建测试 AppState(如开启 cookie_secure 验证 Set-Cookie 行为)。
+pub async fn test_state_with_config(config: Config) -> AppState {
+    let config = Arc::new(config);
     AppState {
         db: crate::db::open_memory().await.expect("内存库"),
         http: crate::build_http_client(&config),
@@ -211,4 +217,38 @@ pub async fn insert_budget(
     .await
     .expect("插入预算");
     id
+}
+
+/// 建管理员 + 登录,返回 (AppState, Cookie 串)。后续 admin API 测试的标准开场。
+pub async fn admin_session() -> (AppState, String) {
+    let state = test_state().await;
+    insert_user(&state.db, "admin@x.com", "Adm1n!pass", "admin", "active").await;
+    let resp = crate::app(state.clone())
+        .oneshot(json_request(
+            "POST",
+            "/admin/api/login",
+            serde_json::json!({"email": "admin@x.com", "password": "Adm1n!pass"}),
+        ))
+        .await
+        .unwrap();
+    let cookie = first_cookie(&resp);
+    (state, cookie)
+}
+
+/// 带会话 cookie 的 JSON 请求
+pub fn authed_request(
+    method: &str,
+    uri: &str,
+    cookie: &str,
+    body: Option<serde_json::Value>,
+) -> Request<Body> {
+    let b = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::COOKIE, cookie)
+        .header(header::CONTENT_TYPE, "application/json");
+    match body {
+        Some(v) => b.body(Body::from(v.to_string())).expect("构造请求"),
+        None => b.body(Body::empty()).expect("构造请求"),
+    }
 }

@@ -37,10 +37,11 @@ struct MeResp {
     role: &'static str,
 }
 
-fn session_cookie(value: String, max_age_secs: i64) -> Cookie<'static> {
+fn session_cookie(value: String, max_age_secs: i64, secure: bool) -> Cookie<'static> {
     Cookie::build((SESSION_COOKIE, value))
         .http_only(true)
         .same_site(SameSite::Lax)
+        .secure(secure)
         .path("/")
         .max_age(time::Duration::seconds(max_age_secs))
         .build()
@@ -88,7 +89,11 @@ async fn login(
     };
     let value = encode_session(&session, &state.config.session_secret);
     Ok((
-        jar.add(session_cookie(value, SESSION_TTL_SECS)),
+        jar.add(session_cookie(
+            value,
+            SESSION_TTL_SECS,
+            state.config.cookie_secure,
+        )),
         Json(MeResp {
             email,
             role: "admin",
@@ -96,10 +101,11 @@ async fn login(
     ))
 }
 
-async fn logout(jar: CookieJar) -> (CookieJar, StatusCode) {
-    // 无状态会话:仅指示浏览器删除 cookie(Max-Age=0)
+async fn logout(State(state): State<AppState>, jar: CookieJar) -> (CookieJar, StatusCode) {
+    // 无状态会话:仅指示浏览器删除 cookie(Max-Age=0)。
+    // 清除 cookie 也带上与下发时一致的 Secure,确保浏览器能匹配并删除原 cookie。
     (
-        jar.add(session_cookie(String::new(), 0)),
+        jar.add(session_cookie(String::new(), 0, state.config.cookie_secure)),
         StatusCode::NO_CONTENT,
     )
 }
@@ -321,6 +327,39 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         assert_eq!(body_json(resp).await["error"]["code"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn login_default_cookie_not_secure() {
+        // 默认配置 cookie_secure=false:Set-Cookie 不应含 Secure 属性
+        let state = state_with_admin().await;
+        let resp = login(&state, "admin@x.com", "Adm1n!pass").await;
+        let set = resp
+            .headers()
+            .get(header::SET_COOKIE)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_lowercase();
+        assert!(!set.contains("secure"), "默认不应带 Secure: {set}");
+    }
+
+    #[tokio::test]
+    async fn login_cookie_secure_when_configured() {
+        // cookie_secure=true:Set-Cookie 含 Secure
+        let mut cfg = crate::test_util::test_config();
+        cfg.cookie_secure = true;
+        let state = crate::test_util::test_state_with_config(cfg).await;
+        insert_user(&state.db, "admin@x.com", "Adm1n!pass", "admin", "active").await;
+        let resp = login(&state, "admin@x.com", "Adm1n!pass").await;
+        let set = resp
+            .headers()
+            .get(header::SET_COOKIE)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_lowercase();
+        assert!(set.contains("secure"), "配置开启时应带 Secure: {set}");
     }
 
     #[tokio::test]

@@ -50,6 +50,33 @@ pub fn compute_cost_micro(usage: &Usage, prices: &Prices) -> i64 {
         + line_cost_micro(usage.cache_write_tokens, prices.cache_write_micro)
 }
 
+/// 解析 CNY 字符串为 micro-CNY:接受 "100" / "100.50",最多 6 位小数,非负。
+/// 校验「必须为正」由调用方按业务判断(模型价格允许 0,预算限额要 >0)。
+pub fn parse_cny_to_micro(s: &str) -> anyhow::Result<i64> {
+    let s = s.trim();
+    anyhow::ensure!(!s.is_empty(), "金额不能为空");
+    anyhow::ensure!(!s.starts_with('-'), "金额不能为负");
+    let (int_part, frac_part) = s.split_once('.').unwrap_or((s, ""));
+    anyhow::ensure!(frac_part.len() <= 6, "最多 6 位小数");
+    anyhow::ensure!(
+        !int_part.is_empty() && int_part.bytes().all(|b| b.is_ascii_digit()),
+        "金额格式无效"
+    );
+    anyhow::ensure!(
+        frac_part.bytes().all(|b| b.is_ascii_digit()),
+        "金额格式无效"
+    );
+    let int: i64 = int_part.parse().map_err(|_| anyhow::anyhow!("金额过大"))?;
+    let frac: i64 = if frac_part.is_empty() {
+        0
+    } else {
+        format!("{frac_part:0<6}").parse()?
+    };
+    int.checked_mul(1_000_000)
+        .and_then(|v| v.checked_add(frac))
+        .ok_or_else(|| anyhow::anyhow!("金额过大"))
+}
+
 /// 协议枚举。与 gateway 其余模块共用(此处定义,gateway 内 re-export)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Protocol {
@@ -749,6 +776,23 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(used, 210);
+    }
+
+    // ── parse_cny_to_micro ──
+
+    #[test]
+    fn parse_cny_to_micro_vectors() {
+        assert_eq!(parse_cny_to_micro("100").unwrap(), 100_000_000);
+        assert_eq!(parse_cny_to_micro("100.50").unwrap(), 100_500_000);
+        assert_eq!(parse_cny_to_micro("0.000001").unwrap(), 1);
+        assert_eq!(parse_cny_to_micro("21.000000").unwrap(), 21_000_000);
+        assert_eq!(parse_cny_to_micro("0").unwrap(), 0);
+        assert!(parse_cny_to_micro("").is_err());
+        assert!(parse_cny_to_micro("1.2345678").is_err()); // 7 位小数
+        assert!(parse_cny_to_micro("-5").is_err());
+        assert!(parse_cny_to_micro("abc").is_err());
+        assert!(parse_cny_to_micro("1e3").is_err());
+        assert!(parse_cny_to_micro("9300000000000").is_err()); // 溢出 i64 micro
     }
 
     #[tokio::test]

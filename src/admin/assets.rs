@@ -46,14 +46,30 @@ pub async fn serve_spa(AxumPath(path): AxumPath<String>) -> Response {
 
 fn file_response(path: &str, file: EmbeddedFile, cache: &'static str) -> Response {
     let mime = file.metadata.mimetype();
+    let content_type = with_charset(mime);
     Response::builder()
-        .header(header::CONTENT_TYPE, mime)
+        .header(header::CONTENT_TYPE, content_type)
         .header(header::CACHE_CONTROL, cache)
         .body(Body::from(file.data))
         .unwrap_or_else(|_| {
             tracing::error!(path, "构造资产响应失败");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         })
+}
+
+/// 给文本类 MIME 补 `; charset=utf-8`(P1 遗留#4):
+/// text/*、application/javascript、application/json、image/svg+xml 都含中文字节,
+/// 不声明编码时浏览器可能按 latin-1 解码致乱码。已带 charset 的不重复拼。
+fn with_charset(mime: &str) -> String {
+    let needs_charset = mime.starts_with("text/")
+        || mime == "application/javascript"
+        || mime == "application/json"
+        || mime == "image/svg+xml";
+    if needs_charset && !mime.to_ascii_lowercase().contains("charset") {
+        format!("{mime}; charset=utf-8")
+    } else {
+        mime.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -122,6 +138,31 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(ct.contains("javascript"), "实际: {ct}");
+    }
+
+    #[tokio::test]
+    async fn js_asset_has_utf8_charset() {
+        // JS 资产 Content-Type 必须带 charset=utf-8(P1 遗留#4:中文标识符/字符串正确解码)
+        let resp = get("/admin/assets/cloudllm-probe-cafebabe.js").await;
+        let ct = resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(ct.contains("charset=utf-8"), "JS 应带 charset: {ct}");
+    }
+
+    #[tokio::test]
+    async fn html_has_utf8_charset() {
+        let resp = get("/admin").await;
+        let ct = resp
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(ct.contains("charset=utf-8"), "HTML 应带 charset: {ct}");
     }
 
     #[tokio::test]
