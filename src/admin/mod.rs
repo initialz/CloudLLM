@@ -1,6 +1,7 @@
 pub mod api;
 pub mod assets;
 pub mod limiter;
+pub mod teams;
 pub mod users;
 
 /// 邮箱格式校验,供各资源共用(避免多处复制后漂移)。
