@@ -51,7 +51,7 @@ export default function Login() {
           </div>
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="mb-1 block font-mono text-xs tracking-wider text-[#8b9bb4]">EMAIL</label>
+              <label htmlFor="email" className="mb-1 block font-mono text-xs tracking-wider text-subtle">EMAIL</label>
               <input
                 id="email"
                 name="email"
@@ -65,7 +65,7 @@ export default function Login() {
               />
             </div>
             <div>
-              <label htmlFor="password" className="mb-1 block font-mono text-xs tracking-wider text-[#8b9bb4]">PASSWORD</label>
+              <label htmlFor="password" className="mb-1 block font-mono text-xs tracking-wider text-subtle">PASSWORD</label>
               <input
                 id="password"
                 name="password"

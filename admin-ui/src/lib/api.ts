@@ -247,7 +247,7 @@ export const api = {
   },
 
   reports: {
-    query: (dimension: string, from: string, to: string) =>
+    query: (dimension: string, from: number, to: number) =>
       request<{ rows: ReportRow[] }>(
         `/admin/api/reports${qs({ dimension, from, to })}`,
       ),

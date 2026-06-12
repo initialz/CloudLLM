@@ -96,7 +96,7 @@ export function Input({ label, error, className = '', id, ...rest }: InputProps)
   return (
     <label className="block">
       {label && (
-        <span className="mb-1 block font-mono text-xs tracking-wider text-[#8b9bb4]">{label}</span>
+        <span className="mb-1 block font-mono text-xs tracking-wider text-subtle">{label}</span>
       )}
       <input
         id={id}
@@ -120,7 +120,7 @@ export function Select({ label, className = '', children, ...rest }: SelectProps
   return (
     <label className="block">
       {label && (
-        <span className="mb-1 block font-mono text-xs tracking-wider text-[#8b9bb4]">{label}</span>
+        <span className="mb-1 block font-mono text-xs tracking-wider text-subtle">{label}</span>
       )}
       <select
         {...rest}
@@ -171,6 +171,10 @@ interface Column<T> {
   key: string;
   title: string;
   render?: (row: T) => ReactNode;
+  /** 列对齐:金额等数值列建议 right;默认 left */
+  align?: 'left' | 'right';
+  /** 列固定宽度(如操作列):CSS 长度值,如 '120px' */
+  width?: string;
 }
 
 export function Table<T>({
@@ -192,7 +196,10 @@ export function Table<T>({
             {columns.map((c) => (
               <th
                 key={c.key}
-                className="whitespace-nowrap px-4 py-2.5 text-left font-mono text-xs font-normal uppercase tracking-wider text-dim"
+                style={c.width ? { width: c.width } : undefined}
+                className={`whitespace-nowrap px-4 py-2.5 font-mono text-xs font-normal uppercase tracking-wider text-dim ${
+                  c.align === 'right' ? 'text-right' : 'text-left'
+                }`}
               >
                 {c.title}
               </th>
@@ -213,7 +220,13 @@ export function Table<T>({
                 className="border-b border-line/50 transition last:border-0 hover:bg-bg/40"
               >
                 {columns.map((c) => (
-                  <td key={c.key} className="whitespace-nowrap px-4 py-3 text-ink">
+                  <td
+                    key={c.key}
+                    style={c.width ? { width: c.width } : undefined}
+                    className={`whitespace-nowrap px-4 py-3 text-ink ${
+                      c.align === 'right' ? 'text-right' : ''
+                    }`}
+                  >
                     {c.render ? c.render(row) : ((row as Record<string, ReactNode>)[c.key] ?? '—')}
                   </td>
                 ))}
@@ -315,17 +328,43 @@ export function Badge({ status }: { status: string }) {
 
 /* ───────────────────────── 复制按钮 ───────────────────────── */
 
+// 非安全上下文(如 http 内网)下 navigator.clipboard 不可用,用临时 textarea + execCommand 回退
+function legacyCopy(text: string): boolean {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    // 移出可视区域,避免页面跳动/聚焦闪烁
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    ta.setAttribute('readonly', '');
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export function CopyButton({ text, label = '复制' }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* 剪贴板不可用(如非安全上下文)时静默 */
+    let ok = false;
+    if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } catch {
+        ok = legacyCopy(text);
+      }
+    } else {
+      ok = legacyCopy(text);
     }
+    setState(ok ? 'copied' : 'failed');
+    setTimeout(() => setState('idle'), 1500);
   }
 
   return (
@@ -333,10 +372,14 @@ export function CopyButton({ text, label = '复制' }: { text: string; label?: s
       type="button"
       onClick={copy}
       className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 font-mono text-xs transition ${
-        copied ? 'border-neon/60 text-neon' : 'border-line text-dim hover:border-neon/50 hover:text-neon'
+        state === 'copied'
+          ? 'border-neon/60 text-neon'
+          : state === 'failed'
+            ? 'border-rose-500/60 text-rose-300'
+            : 'border-line text-dim hover:border-neon/50 hover:text-neon'
       }`}
     >
-      {copied ? '已复制' : label}
+      {state === 'copied' ? '已复制' : state === 'failed' ? '复制失败' : label}
     </button>
   );
 }
