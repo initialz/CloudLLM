@@ -61,13 +61,14 @@ export default function Keys() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [models, setModels] = useState<Model[]>([]);
 
-  async function load() {
-    setError(null);
+  // silent=true:仅刷新数据不写 error(成功屏后台刷新用,避免在成功屏飘红条)
+  async function load(silent = false) {
+    if (!silent) setError(null);
     try {
       const { keys } = await api.keys.list();
       setKeys(keys);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '网络错误');
+      if (!silent) setError(e instanceof ApiError ? e.message : '网络错误');
     }
   }
 
@@ -94,6 +95,10 @@ export default function Keys() {
       setTeams(t.teams);
       setModels(m.models.filter((x) => x.status === 'active'));
     } catch (e) {
+      // 拉取失败时清空三个下拉数据源,防止显示上一次打开向导的陈旧数据
+      setUsers([]);
+      setTeams([]);
+      setModels([]);
       setError(e instanceof ApiError ? e.message : '网络错误');
     }
   }
@@ -128,7 +133,8 @@ export default function Keys() {
         budget_period: limitTrimmed ? period : undefined,
       });
       setCreated(result);
-      await load();
+      // 签发已成功:列表刷新失败不该在成功屏飘红条,silent 刷新(关闭成功屏时再 load 兜底)
+      await load(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '网络错误');
     } finally {
@@ -141,6 +147,8 @@ export default function Keys() {
     if (!window.confirm('确认已保存 Key?关闭后无法再次查看明文。')) return;
     setCreated(null);
     setWizardOpen(false);
+    // 兜底:成功屏期间 silent 刷新可能失败,关闭时再拉一次让列表与后端对齐
+    load();
   }
 
   // 第一屏(未提交成功)直接关闭无须确认

@@ -50,6 +50,12 @@ export default function Channels() {
 
   async function submitCreate(e: React.FormEvent) {
     e.preventDefault();
+    // 前端拦截:weight 须为正整数(空串 Number('')=0 后端也拦,但就地提示更友好)
+    const w = Number(weight);
+    if (!Number.isInteger(w) || w < 1) {
+      setError('weight 必须为正整数');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -58,7 +64,7 @@ export default function Channels() {
         name,
         base_url: baseUrl,
         credential,
-        weight: Number(weight),
+        weight: w,
       });
       setCreating(false);
       await load();
@@ -99,10 +105,16 @@ export default function Channels() {
   async function submitWeight(e: React.FormEvent) {
     e.preventDefault();
     if (!editingWeight) return;
+    // 前端拦截:weight 须为正整数
+    const w = Number(weightInput);
+    if (!Number.isInteger(w) || w < 1) {
+      setError('weight 必须为正整数');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await api.channels.update(editingWeight.id, { weight: Number(weightInput) });
+      await api.channels.update(editingWeight.id, { weight: w });
       setEditingWeight(null);
       await load();
     } catch (err) {

@@ -83,6 +83,13 @@ export default function Reports() {
 
   useEffect(() => {
     let alive = true;
+    // 自定义区间非法(开始 >= 结束)时就地提示,不打后端
+    if (preset === 'custom' && range.from >= range.to) {
+      setError('时间窗无效:开始日期须早于结束日期');
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     api.reports
@@ -102,7 +109,7 @@ export default function Reports() {
     return () => {
       alive = false;
     };
-  }, [dimension, range.from, range.to]);
+  }, [dimension, range.from, range.to, preset]);
 
   // 汇总(前端对 rows 求和)
   const totals = useMemo(() => {
@@ -319,6 +326,7 @@ function DayChart({ rows }: { rows: ReportRow[] }) {
                 className="fill-dim font-mono"
                 fontSize={10}
               >
+                {/* 依赖后端 day 维度 bucket 恒为 YYYY-MM-DD,slice(5) 取 MM-DD */}
                 {r.bucket.slice(5)}
               </text>
             )}
