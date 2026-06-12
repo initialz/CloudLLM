@@ -1,4 +1,4 @@
-name: rust-ci
+name: ci
 
 on:
   push:
@@ -24,22 +24,15 @@ jobs:
 
   admin-ui:
     runs-on: ubuntu-latest
-    # admin-ui 在后续任务才创建;目录不存在时跳过,避免 P1 中途 CI 红
     steps:
       - uses: actions/checkout@v4
-      - id: exists
-        run: |
-          if [ -f admin-ui/package.json ]; then
-            echo "yes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "yes=false" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.exists.outputs.yes == 'true'
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - if: steps.exists.outputs.yes == 'true'
+          cache: npm
+          cache-dependency-path: admin-ui/package-lock.json
+      - run: npm ci
         working-directory: admin-ui
-        run: npm ci && npm run build
-      - if: steps.exists.outputs.yes == 'false'
-        run: echo "::warning::admin-ui 尚未创建,跳过构建(admin-ui 落地后此分支应改为 exit 1)"
+      # build 含 tsc --noEmit,类型错误即红
+      - run: npm run build
+        working-directory: admin-ui
