@@ -4,10 +4,17 @@
 use crate::billing::{extract_usage_from_json, Protocol, Usage};
 use serde_json::Value;
 
+/// 缓冲软上限(1 MiB)。上游是配置内渠道,正常 SSE 行远不及此,风险低;此为防御性
+/// 上界,防恶意/异常上游发来无换行的超长行把内存打爆。溢出代价是该流 usage 计 0
+/// (宁少不崩):置位 `overflowed` 后本流不再累积/解析,只静默丢弃后续字节。
+const MAX_BUFFER_BYTES: usize = 1024 * 1024;
+
 pub struct UsageTap {
     protocol: Protocol,
     buffer: Vec<u8>,
     usage: Usage,
+    /// 一旦缓冲超过软上限且无换行可切,置位;此后本流静默丢弃所有输入。
+    overflowed: bool,
 }
 
 impl UsageTap {
@@ -16,11 +23,16 @@ impl UsageTap {
             protocol,
             buffer: Vec::new(),
             usage: Usage::default(),
+            overflowed: false,
         }
     }
 
     /// 喂入一段字节。按 \n 切出整行解析;未完行留缓冲。
     pub fn feed(&mut self, bytes: &[u8]) {
+        // 已溢出的流不再累积/解析,直接丢弃,避免反复重新填充缓冲
+        if self.overflowed {
+            return;
+        }
         self.buffer.extend_from_slice(bytes);
         // 逐个完整行(以 \n 结尾)切出处理;未完行留缓冲
         while let Some(pos) = self.buffer.iter().position(|&b| b == b'\n') {
@@ -28,6 +40,12 @@ impl UsageTap {
             let line_bytes: Vec<u8> = self.buffer.drain(..=pos).take(pos).collect();
             let line = String::from_utf8_lossy(&line_bytes);
             self.consume_line(line.trim());
+        }
+        // 缓冲超限且当前无换行可切(切完后仍有残留)→ 触发溢出保护:清空并置位,
+        // 防止异常上游用无换行超长行持续撑大内存。
+        if self.buffer.len() > MAX_BUFFER_BYTES {
+            self.buffer = Vec::new();
+            self.overflowed = true;
         }
     }
 
@@ -187,7 +205,12 @@ mod tests {
         let line = "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n"
             .as_bytes()
             .to_vec();
-        let (a, b) = line.split_at(line.len() - 5);
+        let cut = line.len() - 7; // 落在「好」的多字节序列内部
+        debug_assert!(
+            std::str::from_utf8(&line[..cut]).is_err(),
+            "切点必须真正切进多字节字符内部,否则未覆盖断字符路径"
+        );
+        let (a, b) = line.split_at(cut);
         t.feed(a);
         t.feed(b);
         // 再喂含 usage 的完整行
@@ -201,5 +224,22 @@ mod tests {
         let mut t = tap(Protocol::Openai);
         t.feed(b"data: {\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":2},\"choices\":[]}");
         assert_eq!(t.finish().input_tokens, 8);
+    }
+
+    #[test]
+    fn oversized_line_without_newline_triggers_overflow_guard() {
+        // 异常上游发来无换行的超长垃圾(2 MiB):不 panic、缓冲触发上限后清空、
+        // finish 返回零 usage(宁少不崩)。
+        let mut t = tap(Protocol::Openai);
+        let junk = vec![b'x'; 2 * 1024 * 1024]; // 2 MiB,无 \n
+        t.feed(&junk);
+        // 溢出保护已触发:缓冲清空、置位
+        assert!(t.overflowed, "超长无换行行应触发溢出保护");
+        assert!(t.buffer.is_empty(), "溢出后缓冲必须清空,内存不留存");
+        // 置位后继续喂入(含合法 usage 行)也被静默丢弃,缓冲仍为空
+        t.feed(b"data: {\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":9},\"choices\":[]}\n");
+        assert!(t.buffer.is_empty(), "溢出后输入应被丢弃,缓冲保持空");
+        // finish 返回零 usage
+        assert_eq!(t.finish(), Usage::default());
     }
 }
