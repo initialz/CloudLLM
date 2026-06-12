@@ -34,6 +34,16 @@ impl ApiError {
         }
     }
 
+    /// 登录限速触发(防爆破/探测):不区分维度,统一文案防探测。
+    pub fn too_many_attempts() -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "too_many_attempts",
+            message: "尝试次数过多,请稍后再试".into(),
+            detail: None,
+        }
+    }
+
     pub fn not_found(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,

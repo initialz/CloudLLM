@@ -33,6 +33,7 @@ pub async fn test_state_with_config(config: Config) -> AppState {
         config,
         settle_tracker: tokio_util::task::TaskTracker::new(),
         settle_failures: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        login_limiter: Arc::new(crate::admin::limiter::LoginLimiter::default()),
     }
 }
 

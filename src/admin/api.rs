@@ -58,9 +58,43 @@ fn dummy_password_hash() -> &'static str {
 
 async fn login(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     jar: CookieJar,
     WithRejection(Json(req), _): WithRejection<Json<LoginReq>, ApiError>,
 ) -> Result<(CookieJar, Json<MeResp>), ApiError> {
+    let now = now_epoch();
+    // 来源:XFF 第一跳(可伪造,内网单实例威胁模型下接受;主防线是邮箱维度)
+    let source = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "direct".into());
+    let email_key = format!("email:{}", req.email);
+    let source_key = format!("source:{source}");
+    // 限速检查必须在 DB 查询前:被锁时直接拒,不暴露查询/时序差异
+    if state.login_limiter.check(&email_key, now).is_err()
+        || state.login_limiter.check(&source_key, now).is_err()
+    {
+        return Err(ApiError::too_many_attempts());
+    }
+
+    // 失败收口:计两个维度 + 写审计(actor=None,subject=email,detail={source})。
+    // 两个失败出口共用,避免复制。返回统一文案 ApiError。
+    let on_failure = || async {
+        state.login_limiter.record_failure(&email_key, now);
+        state.login_limiter.record_failure(&source_key, now);
+        crate::audit::record(
+            &state.db,
+            None,
+            "auth.login_failed",
+            Some(&req.email),
+            serde_json::json!({"source": source}),
+        )
+        .await;
+        ApiError::login_failed()
+    };
+
     let row: Option<(String, String, String, String, String)> =
         sqlx::query_as("SELECT id, email, password_hash, role, status FROM users WHERE email = ?")
             .bind(&req.email)
@@ -71,7 +105,7 @@ async fn login(
     let Some((id, email, password_hash, role, status)) = row else {
         // 时序对齐:不存在的邮箱也付一次 argon2 成本
         let _ = crate::crypto::verify_password(&req.password, dummy_password_hash());
-        return Err(ApiError::login_failed());
+        return Err(on_failure().await);
     };
     // 注:status!=active 时 || 短路跳过 verify,「存在但停用」账号响应略快——
     // 内部威胁模型下接受此时序差(修复需 disabled 路径也跑 dummy verify,不值得)。
@@ -80,8 +114,12 @@ async fn login(
         || role != "admin"
     {
         // 统一文案,不区分原因(防枚举)
-        return Err(ApiError::login_failed());
+        return Err(on_failure().await);
     }
+
+    // 成功:清零两个维度(在签发 cookie 前)
+    state.login_limiter.clear(&email_key);
+    state.login_limiter.clear(&source_key);
 
     let session = SessionData {
         user_id: id,
@@ -311,6 +349,55 @@ mod tests {
         let resp = login(&state, "", "").await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(body_json(resp).await["error"]["message"], "邮箱或密码错误");
+    }
+
+    #[tokio::test]
+    async fn login_locked_after_five_failures() {
+        // 同邮箱连错 5 次 → 第 6 次即使密码正确也被限速 429
+        let state = state_with_admin().await;
+        for _ in 0..5 {
+            let resp = login(&state, "admin@x.com", "wrong").await;
+            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        }
+        let resp = login(&state, "admin@x.com", "Adm1n!pass").await;
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(body_json(resp).await["error"]["code"], "too_many_attempts");
+    }
+
+    #[tokio::test]
+    async fn login_failure_writes_audit() {
+        // 失败一次写 auth.login_failed 审计,subject=邮箱
+        let state = state_with_admin().await;
+        let resp = login(&state, "admin@x.com", "wrong").await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let (action, subject): (String, Option<String>) = sqlx::query_as(
+            "SELECT action, subject FROM audit_events WHERE action='auth.login_failed'",
+        )
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+        assert_eq!(action, "auth.login_failed");
+        assert_eq!(subject.as_deref(), Some("admin@x.com"));
+    }
+
+    #[tokio::test]
+    async fn login_success_not_limited_after_clear() {
+        // 错 4 次 → 成功一次(清零)→ 再错 4 次仍不锁
+        let state = state_with_admin().await;
+        for _ in 0..4 {
+            let resp = login(&state, "admin@x.com", "wrong").await;
+            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        }
+        let ok = login(&state, "admin@x.com", "Adm1n!pass").await;
+        assert_eq!(ok.status(), StatusCode::OK);
+        for _ in 0..4 {
+            let resp = login(&state, "admin@x.com", "wrong").await;
+            assert_eq!(
+                resp.status(),
+                StatusCode::UNAUTHORIZED,
+                "成功后已清零,再错 4 次不应触发限速"
+            );
+        }
     }
 
     #[tokio::test]

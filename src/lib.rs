@@ -32,6 +32,8 @@ pub struct AppState {
     pub settle_tracker: tokio_util::task::TaskTracker,
     /// 落库失败累计(P3 Dashboard 告警)
     pub settle_failures: Arc<AtomicU64>,
+    /// 登录限速器(进程内,邮箱 + 来源双维度)
+    pub login_limiter: Arc<admin::limiter::LoginLimiter>,
 }
 
 /// 用配置构造 reqwest 客户端:connect_timeout 来自配置;不设全局 timeout
