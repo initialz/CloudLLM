@@ -29,11 +29,13 @@ async fn list(
     _user: AdminUser,
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let rows: Vec<UserRow> =
-        sqlx::query_as("SELECT id, email, role, status, created_at FROM users ORDER BY created_at")
-            .fetch_all(&state.db)
-            .await
-            .map_err(ApiError::internal)?;
+    // 次级键 id 兜底:created_at 为秒级时间戳,同秒创建的行单凭它排序不稳定。
+    let rows: Vec<UserRow> = sqlx::query_as(
+        "SELECT id, email, role, status, created_at FROM users ORDER BY created_at, id",
+    )
+    .fetch_all(&state.db)
+    .await
+    .map_err(ApiError::internal)?;
     Ok(Json(serde_json::json!({ "users": rows })))
 }
 
@@ -51,17 +53,7 @@ async fn create(
     WithRejection(Json(req), _): WithRejection<Json<CreateReq>, ApiError>,
 ) -> Result<(StatusCode, Json<UserRow>), ApiError> {
     let email = req.email.trim().to_lowercase();
-    // 与 TS 版同一正则语义:本地部分@域.后缀,均不含空白/@
-    let valid = {
-        let parts: Vec<&str> = email.split('@').collect();
-        parts.len() == 2
-            && !parts[0].is_empty()
-            && parts[1].contains('.')
-            && !parts[1].starts_with('.')
-            && !parts[1].ends_with('.')
-            && !email.chars().any(char::is_whitespace)
-    };
-    if !valid {
+    if !crate::admin::is_valid_email(&email) {
         return Err(ApiError::bad_request("请输入有效邮箱地址"));
     }
     if req.password.len() < 8 {
@@ -86,7 +78,9 @@ async fn create(
         .bind(&id).bind(&email).bind(&hash).bind(&role).bind(created_at)
         .execute(&state.db)
         .await
-        .map_err(ApiError::internal)?;
+        .map_err(|e| ApiError::from_db_unique(e, "该邮箱已注册"))?;
+    // audit detail 约定:只记实际写入的字段;可空列资源(如 budgets.alert_threshold)
+    // 必须只在字段出现时才放入 detail,避免「未改」与「改成 null」混淆。
     crate::audit::record(
         &state.db,
         Some(&user.id),
@@ -150,6 +144,8 @@ async fn update(
     if res.rows_affected() == 0 {
         return Err(ApiError::not_found("用户不存在"));
     }
+    // audit detail 约定:只记实际写入的字段;可空列资源(如 budgets.alert_threshold)
+    // 必须只在字段出现时才放入 detail,避免「未改」与「改成 null」混淆。
     crate::audit::record(
         &state.db,
         Some(&user.id),
@@ -158,6 +154,8 @@ async fn update(
         serde_json::json!({"status": req.status, "role": req.role}),
     )
     .await;
+    // 不用 RETURNING:回读一次成本可忽略,保持 sqlx 运行时 API 风格统一;
+    // SQLite 单写者下无并发可见性问题。
     let row: UserRow =
         sqlx::query_as("SELECT id, email, role, status, created_at FROM users WHERE id = ?")
             .bind(&id)
@@ -320,6 +318,33 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// 钉死 from_db_unique 兜底:绕过 SELECT 预检直接对 db 撞 UNIQUE 约束,
+    /// 验证 SQLite 驱动的 is_unique_violation 真的识别 SQLITE_CONSTRAINT_UNIQUE → 409。
+    #[tokio::test]
+    async fn unique_violation_maps_to_409() {
+        use crate::error::ApiError;
+        let db = crate::db::open_memory().await.unwrap();
+        let insert = |email: &'static str| {
+            let db = db.clone();
+            async move {
+                sqlx::query(
+                    "INSERT INTO users (id, email, password_hash, role, status, created_at) VALUES (?, ?, 'h', 'user', 'active', 0)",
+                )
+                .bind(uuid::Uuid::new_v4().to_string())
+                .bind(email)
+                .execute(&db)
+                .await
+            }
+        };
+        insert("clash@x.com").await.expect("首次插入应成功");
+        let err = insert("clash@x.com")
+            .await
+            .expect_err("重复 email 应命中 UNIQUE");
+        let api = ApiError::from_db_unique(err, "该邮箱已注册");
+        assert_eq!(api.status, StatusCode::CONFLICT);
+        assert_eq!(api.code, "conflict");
     }
 
     #[tokio::test]

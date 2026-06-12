@@ -88,6 +88,17 @@ impl ApiError {
             detail: Some(err.to_string()),
         }
     }
+
+    /// DB 写入错误归类:UNIQUE 冲突 → 409 conflict,其余 → 500 internal。
+    /// 配合「SELECT 预检 + INSERT 兜底」模式:预检给常态下干净的 409,这里关掉竞态窗口。
+    pub fn from_db_unique(err: sqlx::Error, conflict_msg: &'static str) -> Self {
+        if let Some(dberr) = err.as_database_error() {
+            if dberr.is_unique_violation() {
+                return Self::conflict(conflict_msg);
+            }
+        }
+        Self::internal(err)
+    }
 }
 
 impl From<JsonRejection> for ApiError {
