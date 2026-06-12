@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../AuthContext';
 import { api, ApiError } from '../lib/api';
 
 export default function Login() {
   const nav = useNavigate();
+  const { setMe } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -14,7 +16,8 @@ export default function Login() {
     setBusy(true);
     setError('');
     try {
-      await api.login(email, password);
+      const me = await api.login(email, password);
+      setMe(me);
       nav('/', { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '网络错误');
