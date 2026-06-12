@@ -1,0 +1,16 @@
+# CloudLLM 数据卷:cloudllm.toml(含 master_key)+ cloudllm.db 都在这里。
+# 丢卷 = 丢库 + 丢密钥,务必纳入备份(见 deploy/k8s/README.md)。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cloudllm-data
+  namespace: cloudllm
+  labels:
+    app.kubernetes.io/name: cloudllm
+    app.kubernetes.io/part-of: cloudllm
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: <按集群填写;注释掉则用默认 StorageClass>
