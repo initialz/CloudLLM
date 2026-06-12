@@ -163,14 +163,20 @@ pub async fn run_serve(config_path: &Path) -> Result<()> {
         .await
         .context("服务异常退出")?;
 
-    // 优雅停机:已停新请求 → 排水在途结算(上限 30s)→ abort jobs → 关库。
-    tracing::info!("停止接收新请求,排水在途结算(上限 30s)");
+    // 优雅停机:已停新请求 → 排水在途结算 → abort jobs → 关库。
+    // 部署契约:preStop sleep + 本排水时长 ≤ K8s terminationGracePeriodSeconds
+    // (v1.2 清单为 5+25≤30),超限会被 SIGKILL 截断丢账;P4 写 Rust 部署清单时锁定此不变量。
+    let drain = std::time::Duration::from_secs(cfg.shutdown_drain_secs);
+    tracing::info!(
+        drain_secs = cfg.shutdown_drain_secs,
+        "停止接收新请求,排水在途结算"
+    );
     tracker.close();
-    if tokio::time::timeout(std::time::Duration::from_secs(30), tracker.wait())
-        .await
-        .is_err()
-    {
-        tracing::warn!("结算排水超时(30s),仍有在途任务被丢弃");
+    if tokio::time::timeout(drain, tracker.wait()).await.is_err() {
+        tracing::warn!(
+            drain_secs = cfg.shutdown_drain_secs,
+            "结算排水超时,仍有在途任务被丢弃"
+        );
     }
     for h in job_handles {
         h.abort();
