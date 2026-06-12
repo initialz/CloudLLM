@@ -3,10 +3,552 @@
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CloudLLM 接入</title>
+<style>
+:root {
+  --bg: #06080f;
+  --panel: #0b0f1a;
+  --line: rgba(34, 211, 238, 0.18);
+  --line-soft: rgba(148, 163, 184, 0.12);
+  --neon: #22d3ee;
+  --violet: #8b5cf6;
+  --text: #e2e8f0;
+  --muted: #8b9bb4;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  line-height: 1.6;
+  /* 细网格底纹 + 双色径向辉光 */
+  background-image:
+    radial-gradient(900px 600px at 18% -10%, rgba(34, 211, 238, 0.10), transparent 60%),
+    radial-gradient(800px 600px at 110% 115%, rgba(139, 92, 246, 0.10), transparent 60%),
+    linear-gradient(rgba(34, 211, 238, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 211, 238, 0.04) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+  background-attachment: fixed;
+}
+/* 顶部一道极细的渐变光带 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.6), rgba(139, 92, 246, 0.6), transparent);
+  pointer-events: none;
+  z-index: 50;
+}
+.wrap {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+}
+header.top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 36px;
+}
+.brand h1 {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(90deg, var(--neon), var(--violet));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.brand .sub {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+}
+.admin-link {
+  flex: 0 0 auto;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 6px 12px;
+  transition: border-color .15s, color .15s, background .15s;
+  white-space: nowrap;
+}
+.admin-link:hover {
+  color: var(--neon);
+  border-color: var(--line);
+  background: rgba(34, 211, 238, 0.06);
+}
+.card {
+  background: linear-gradient(180deg, rgba(13, 18, 30, 0.9), rgba(11, 15, 26, 0.9));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.04), 0 20px 60px -30px rgba(34, 211, 238, 0.25);
+}
+.field { margin-bottom: 18px; }
+.field label {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+.input-row { display: flex; gap: 8px; }
+input[type="text"], input[type="password"], input {
+  width: 100%;
+  background: rgba(6, 8, 15, 0.7);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  padding: 11px 13px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+input:focus {
+  border-color: var(--neon);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+input::placeholder { color: #56657d; }
+.btn {
+  flex: 0 0 auto;
+  background: rgba(34, 211, 238, 0.08);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--neon);
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 0 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.btn:hover { background: rgba(34, 211, 238, 0.16); }
+.btn.violet { color: var(--violet); border-color: rgba(139, 92, 246, 0.3); background: rgba(139, 92, 246, 0.08); }
+.btn.violet:hover { background: rgba(139, 92, 246, 0.16); }
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 18px;
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 14px;
+}
+.tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 13.5px;
+  padding: 7px 13px;
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active {
+  color: var(--bg);
+  background: linear-gradient(90deg, var(--neon), var(--violet));
+  border-color: transparent;
+  font-weight: 600;
+}
+.out-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.out-head .lbl {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.out-actions { display: flex; gap: 8px; }
+pre#out {
+  margin: 0;
+  background: #06080f;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 16px 18px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+.note {
+  margin: 14px 2px 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.note code {
+  font-family: var(--mono);
+  color: var(--neon);
+  background: rgba(34, 211, 238, 0.08);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 12px;
+}
+footer.foot {
+  margin-top: 22px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+footer.foot .dot { color: var(--neon); }
+</style>
 </head>
 <body>
-<h1>CloudLLM 成员接入</h1>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>CloudLLM</h1>
+      <div class="sub">成员自助接入</div>
+    </div>
+    <a class="admin-link" href="/admin">管理台 &rarr;</a>
+  </header>
+
+  <main class="card">
+    <div class="field">
+      <label for="key">API Key</label>
+      <div class="input-row">
+        <input type="password" id="key" placeholder="sk-cloudllm-..." autocomplete="off" spellcheck="false">
+        <button class="btn" id="toggle-key" type="button">显示</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="base">Base URL</label>
+      <input type="text" id="base" spellcheck="false">
+    </div>
+
+    <div class="field">
+      <label for="model">模型</label>
+      <input type="text" id="model" list="model-list" placeholder="选择或手动填写模型名" spellcheck="false">
+      <datalist id="model-list"></datalist>
+    </div>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" type="button" data-tab="claude-code">Claude Code</button>
+      <button class="tab" type="button" data-tab="codex">Codex</button>
+      <button class="tab" type="button" data-tab="openai-py">OpenAI Python</button>
+      <button class="tab" type="button" data-tab="openai-node">OpenAI Node</button>
+      <button class="tab" type="button" data-tab="curl">curl</button>
+    </div>
+
+    <div class="out-head">
+      <span class="lbl">生成的配置</span>
+      <div class="out-actions">
+        <button class="btn" id="copy" type="button">复制</button>
+        <button class="btn violet" id="download" type="button" style="display:none">下载 config.toml</button>
+      </div>
+    </div>
+    <pre id="out"></pre>
+    <div class="note" id="note"></div>
+  </main>
+
+  <footer class="foot">
+    <span class="dot">&#9679;</span> Key 仅在浏览器本地拼接,不会发送到任何服务器(本页 CSP 已禁止全部网络请求)。
+  </footer>
+</div>
+
 <script>window.__MODELS__ = /*__MODELS_JSON__*/[];</script>
+<script>
+(function () {
+  "use strict";
+
+  var KEY_PLACEHOLDER = "<请在上方填入你的 API Key>";
+
+  var MODELS = Array.isArray(window.__MODELS__) ? window.__MODELS__ : [];
+
+  // Tab -> 上游协议:claude-code 用 anthropic;codex/openai-py/openai-node 用 openai;curl 不过滤
+  var TAB_PROVIDER = {
+    "claude-code": "anthropic",
+    "codex": "openai",
+    "openai-py": "openai",
+    "openai-node": "openai",
+    "curl": null
+  };
+
+  var els = {
+    key: document.getElementById("key"),
+    toggleKey: document.getElementById("toggle-key"),
+    base: document.getElementById("base"),
+    model: document.getElementById("model"),
+    datalist: document.getElementById("model-list"),
+    tabs: document.getElementById("tabs"),
+    out: document.getElementById("out"),
+    note: document.getElementById("note"),
+    copy: document.getElementById("copy"),
+    download: document.getElementById("download")
+  };
+
+  var currentTab = "claude-code";
+
+  // Base URL 默认当前站点 origin
+  els.base.value = location.origin;
+
+  // 去尾斜杠
+  function trimBase(v) {
+    return String(v || "").trim().replace(/\/+$/, "");
+  }
+
+  // 按当前 Tab 协议过滤候选模型
+  function candidates() {
+    var provider = TAB_PROVIDER[currentTab];
+    if (!provider) {
+      return MODELS.map(function (m) { return m.slug; });
+    }
+    return MODELS.filter(function (m) {
+      return m && m.provider_type === provider;
+    }).map(function (m) { return m.slug; });
+  }
+
+  // 刷新 datalist,并在当前模型值不属于新候选时自动切换
+  function refreshModelList() {
+    var list = candidates();
+    // 重建 datalist
+    els.datalist.textContent = "";
+    list.forEach(function (slug) {
+      var opt = document.createElement("option");
+      opt.value = slug;
+      els.datalist.appendChild(opt);
+    });
+    var provider = TAB_PROVIDER[currentTab];
+    if (provider !== null) {
+      var cur = els.model.value.trim();
+      if (cur === "" || list.indexOf(cur) === -1) {
+        // 当前值不属于新协议候选:换为首个候选,无候选则清空留手填
+        els.model.value = list.length ? list[0] : "";
+      }
+    }
+  }
+
+  // ---- 五 Tab 模板 ----
+  // base 已去尾斜杠;key/model 为原值(渲染前替换空 Key)
+
+  function tplClaudeCode(base, key, model) {
+    var lines = [
+      "export ANTHROPIC_BASE_URL=" + base,
+      "export ANTHROPIC_AUTH_TOKEN=" + key
+    ];
+    if (model) {
+      lines.push("export ANTHROPIC_MODEL=" + model);
+    }
+    lines.push("# 写入 shell 配置后,启动 Claude Code:");
+    lines.push('claude "你好"');
+    return lines.join("\n");
+  }
+
+  function tplCodexToml(base, model) {
+    var m = model || "<模型名>";
+    return [
+      "# ~/.codex/config.toml",
+      'model = "' + m + '"',
+      'model_provider = "cloudllm"',
+      "",
+      "[model_providers.cloudllm]",
+      'name = "CloudLLM"',
+      'base_url = "' + base + '/v1"',
+      'env_key = "CLOUDLLM_API_KEY"',
+      'wire_api = "chat"'
+    ].join("\n");
+  }
+
+  function tplCodex(base, key, model) {
+    // pre 里额外显示 export 行,但该行不进下载文件
+    return "export CLOUDLLM_API_KEY=" + key + "\n\n" + tplCodexToml(base, model);
+  }
+
+  function tplOpenAiPy(base, key, model) {
+    return [
+      "from openai import OpenAI",
+      "",
+      "client = OpenAI(",
+      '    api_key="' + key + '",',
+      '    base_url="' + base + '/v1",',
+      ")",
+      "",
+      "response = client.chat.completions.create(",
+      '    model="' + model + '",',
+      '    messages=[{"role": "user", "content": "你好"}],',
+      ")",
+      "print(response.choices[0].message.content)"
+    ].join("\n");
+  }
+
+  function tplOpenAiNode(base, key, model) {
+    return [
+      'import OpenAI from "openai";',
+      "",
+      "const client = new OpenAI({",
+      '  apiKey: "' + key + '",',
+      '  baseURL: "' + base + '/v1",',
+      "});",
+      "",
+      "const res = await client.chat.completions.create({",
+      '  model: "' + model + '",',
+      '  messages: [{ role: "user", content: "你好" }],',
+      "});",
+      "console.log(res.choices[0].message.content);"
+    ].join("\n");
+  }
+
+  function tplCurl(base, key, model) {
+    return [
+      "# OpenAI 兼容格式",
+      "curl " + base + "/v1/chat/completions \\",
+      '  -H "Authorization: Bearer ' + key + '" \\',
+      '  -H "Content-Type: application/json" \\',
+      "  -d '{\"model\": \"" + model + "\", \"messages\": [{\"role\": \"user\", \"content\": \"ping\"}]}'",
+      "",
+      "# Anthropic Messages 原生格式",
+      "curl " + base + "/v1/messages \\",
+      '  -H "Authorization: Bearer ' + key + '" \\',
+      '  -H "Content-Type: application/json" \\',
+      "  -d '{\"model\": \"" + model + "\", \"max_tokens\": 256, \"messages\": [{\"role\": \"user\", \"content\": \"ping\"}]}'"
+    ].join("\n");
+  }
+
+  // 每 Tab 下方说明(HTML 片段,固定文案,无外链)
+  var NOTES = {
+    "claude-code": '把这几行加入 <code>~/.zshrc</code> 或 <code>~/.bashrc</code> 后执行 <code>source</code> 生效。<br>注意 <code>ANTHROPIC_BASE_URL</code> 不带 <code>/v1</code> 后缀。运行 <code>claude "你好"</code> 验证连通。',
+    "codex": '将 toml 部分写入 <code>~/.codex/config.toml</code>;另需在 shell 中执行第一行的 <code>export CLOUDLLM_API_KEY=...</code>(该行不会写入下载的配置文件)。字段以 Codex 官方文档为准。',
+    "openai-py": '安装依赖 <code>pip install openai</code> 后保存为 .py 运行。Base URL 带 <code>/v1</code>,走 OpenAI 兼容 Chat Completions 接口。',
+    "openai-node": '安装依赖 <code>npm i openai</code>,在支持顶层 await 的 ESM 环境运行。Base URL 带 <code>/v1</code>。',
+    "curl": '两段分别演示 OpenAI 兼容格式与 Anthropic 原生格式,任选其一直接粘贴终端验证连通。返回 JSON 即接入成功。'
+  };
+
+  function render() {
+    var base = trimBase(els.base.value);
+    var rawKey = els.key.value.trim();
+    var key = rawKey === "" ? KEY_PLACEHOLDER : rawKey;
+    var model = els.model.value.trim();
+
+    var text;
+    switch (currentTab) {
+      case "claude-code": text = tplClaudeCode(base, key, model); break;
+      case "codex": text = tplCodex(base, key, model); break;
+      case "openai-py": text = tplOpenAiPy(base, key, model); break;
+      case "openai-node": text = tplOpenAiNode(base, key, model); break;
+      case "curl": text = tplCurl(base, key, model); break;
+      default: text = "";
+    }
+    // 必须用 textContent 防 HTML 解释
+    els.out.textContent = text;
+
+    els.note.innerHTML = NOTES[currentTab] || "";
+
+    // 下载按钮仅 Codex Tab 显示
+    els.download.style.display = currentTab === "codex" ? "" : "none";
+  }
+
+  // ---- 交互 ----
+
+  els.toggleKey.addEventListener("click", function () {
+    if (els.key.type === "password") {
+      els.key.type = "text";
+      els.toggleKey.textContent = "隐藏";
+    } else {
+      els.key.type = "password";
+      els.toggleKey.textContent = "显示";
+    }
+  });
+
+  els.tabs.addEventListener("click", function (e) {
+    var btn = e.target.closest(".tab");
+    if (!btn) return;
+    var tab = btn.getAttribute("data-tab");
+    if (!tab || tab === currentTab) return;
+    currentTab = tab;
+    var all = els.tabs.querySelectorAll(".tab");
+    for (var i = 0; i < all.length; i++) {
+      all[i].classList.toggle("active", all[i] === btn);
+    }
+    refreshModelList();
+    render();
+  });
+
+  ["input", "change"].forEach(function (ev) {
+    els.key.addEventListener(ev, render);
+    els.base.addEventListener(ev, render);
+    els.model.addEventListener(ev, render);
+  });
+
+  // 复制:优先 clipboard,失败回退 execCommand
+  function flashCopied() {
+    var orig = "复制";
+    els.copy.textContent = "已复制";
+    setTimeout(function () { els.copy.textContent = orig; }, 1200);
+  }
+  function fallbackCopy(text) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "-1000px";
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (ok) flashCopied();
+    } catch (err) { /* 静默:剪贴板不可用时不打断用户 */ }
+  }
+  els.copy.addEventListener("click", function () {
+    var text = els.out.textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(flashCopied, function () {
+        fallbackCopy(text);
+      });
+    } else {
+      fallbackCopy(text);
+    }
+  });
+
+  // 下载 config.toml:仅 toml 部分(不含 export 行)
+  els.download.addEventListener("click", function () {
+    var base = trimBase(els.base.value);
+    var model = els.model.value.trim();
+    var toml = tplCodexToml(base, model);
+    var blob = new Blob([toml], { type: "application/toml" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "config.toml";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+  });
+
+  // 初始
+  refreshModelList();
+  render();
+})();
+</script>
 </body>
 </html>
