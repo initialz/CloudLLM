@@ -1,0 +1,15 @@
+# CloudLLM 单服务 compose:docker compose up -d --build 即起全部功能。
+# 初始管理员密码看日志:docker compose logs cloudllm | grep 初始密码
+services:
+  cloudllm:
+    build: .
+    ports:
+      - "7100:7100"
+    volumes:
+      - cloudllm-data:/data
+    environment:
+      # 接入说明里展示给成员的网关地址,按实际部署改
+      CLOUDLLM_GATEWAY_PUBLIC_URL: "http://localhost:7100"
+    restart: unless-stopped
+volumes:
+  cloudllm-data:
