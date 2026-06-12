@@ -218,22 +218,28 @@ async fn remove(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
+    // 先取 slug:既用于 404 判断(省 rows_affected),又供审计 detail(删除后行已不在)。
+    let slug: Option<(String,)> = sqlx::query_as("SELECT slug FROM models WHERE id = ?")
+        .bind(&id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(ApiError::internal)?;
+    let Some((slug,)) = slug else {
+        return Err(ApiError::not_found("模型不存在"));
+    };
     // 直接删行;usage_records.model_slug 是软引用(无 FK),历史账单保留。
-    let res = sqlx::query("DELETE FROM models WHERE id = ?")
+    sqlx::query("DELETE FROM models WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(ApiError::internal)?;
-    if res.rows_affected() == 0 {
-        return Err(ApiError::not_found("模型不存在"));
-    }
-    // subject=资源 id;detail 记 slug 便于审计追溯(删除后行已不在,故先取)。
+    // subject=资源 id;detail 记 slug 便于审计追溯。
     crate::audit::record(
         &state.db,
         Some(&user.id),
         "model.delete",
         Some(&id),
-        serde_json::json!({}),
+        serde_json::json!({"slug": slug}),
     )
     .await;
     Ok(StatusCode::NO_CONTENT)
@@ -373,6 +379,15 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(n, 1, "历史账单必须保留");
+
+        // audit model.delete detail 记 slug(对齐计划 audit 表)
+        let (detail,): (String,) =
+            sqlx::query_as("SELECT detail FROM audit_events WHERE action='model.delete'")
+                .fetch_one(&state.db)
+                .await
+                .unwrap();
+        let detail: serde_json::Value = serde_json::from_str(&detail).unwrap();
+        assert_eq!(detail["slug"], slug);
 
         // 再 DELETE → 404
         let resp = app(state.clone())
