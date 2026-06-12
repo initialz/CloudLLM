@@ -1,7 +1,9 @@
 //! 计费纯函数:token 用量提取(两协议、流式事件与非流式同源)、micro-CNY 逐档 ceil 计费、
 //! UTF-8 安全截断。下半部分(check_budgets / settle_usage 事务)在 T7 追加。
 
+use crate::gateway::auth::AuthedKey;
 use serde_json::Value;
+use sqlx::SqlitePool;
 
 /// 四档 token 用量。i64 避免与 micro 计算混用 usize。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -103,6 +105,162 @@ pub fn truncate_utf8(s: &str, limit: usize) -> String {
         end -= 1;
     }
     format!("{}…[截断]", &s[..end])
+}
+
+/// 预算主体:Key 自身 + owner。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Subject {
+    pub subject_type: String,
+    pub subject_id: String,
+}
+
+pub fn subjects_for_key(key: &AuthedKey) -> Vec<Subject> {
+    vec![
+        Subject {
+            subject_type: "key".into(),
+            subject_id: key.id.clone(),
+        },
+        Subject {
+            subject_type: key.owner_type.clone(),
+            subject_id: key.owner_id.clone(),
+        },
+    ]
+}
+
+/// 落库时的请求结局。
+#[derive(Debug, Clone)]
+pub struct SettleInput {
+    pub key_id: String,
+    pub model_slug: String,
+    pub channel_id: Option<String>,
+    pub usage: Usage,
+    pub cost_micro: i64,
+    pub latency_ms: Option<i64>,
+    pub ttft_ms: Option<i64>,
+    pub status: &'static str, // ok / rejected / upstream_error / client_abort
+    pub error_code: Option<String>,
+    pub request_body: Option<String>,  // 已截断(audit)
+    pub response_body: Option<String>, // 已截断(audit)
+    /// 预算累加用的主体(rejected 时可空)
+    pub subjects: Vec<Subject>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum BudgetCheck {
+    Ok,
+    Exhausted(Subject),
+}
+
+/// (year, month) 元组:ts 所在 UTC 自然月。非法时间戳视为最早 (0, 0)。
+fn year_month(ts: i64) -> (i32, u8) {
+    match time::OffsetDateTime::from_unix_timestamp(ts) {
+        Ok(dt) => (dt.year(), dt.month() as u8),
+        Err(_) => (0, 0), // 非法时间戳:视为最早,触发翻转重置(安全侧)
+    }
+}
+
+/// (year, month) 比较:ts 所在月是否早于 now 所在月(UTC)。
+/// 用元组比较以正确处理跨年(12 月 < 次年 1 月)。
+fn is_earlier_month(ts: i64, now: i64) -> bool {
+    year_month(ts) < year_month(now)
+}
+
+/// 读路径预算检查。月翻转仅视角处理,不写库。
+pub async fn check_budgets(db: &SqlitePool, subjects: &[Subject], now: i64) -> BudgetCheck {
+    for s in subjects {
+        let rows: Vec<(String, i64, i64, i64)> = match sqlx::query_as(
+            "SELECT period, limit_micro, used_micro, period_start FROM budgets \
+             WHERE subject_type = ? AND subject_id = ? AND status = 'active'",
+        )
+        .bind(&s.subject_type)
+        .bind(&s.subject_id)
+        .fetch_all(db)
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(error = %e, "查询预算失败");
+                // 读失败放行(可用性优先;落库台账仍记账)——与 TS「PG 为事实源」取舍一致
+                continue;
+            }
+        };
+        for (period, limit, used, period_start) in rows {
+            let remaining = if period == "monthly" && is_earlier_month(period_start, now) {
+                limit // 视角翻转:本月未用
+            } else {
+                limit - used
+            };
+            if remaining <= 0 {
+                return BudgetCheck::Exhausted(s.clone());
+            }
+        }
+    }
+    BudgetCheck::Ok
+}
+
+/// 单事务落库:INSERT usage_records + 命中预算行 UPDATE(含月翻转内联)。
+pub async fn settle_usage(db: &SqlitePool, input: &SettleInput, now: i64) -> anyhow::Result<()> {
+    let mut tx = db.begin().await?;
+
+    sqlx::query(
+        "INSERT INTO usage_records \
+         (id, key_id, model_slug, channel_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, \
+          cost_micro, latency_ms, ttft_ms, status, error_code, request_body, response_body, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&input.key_id)
+    .bind(&input.model_slug)
+    .bind(&input.channel_id)
+    .bind(input.usage.input_tokens)
+    .bind(input.usage.output_tokens)
+    .bind(input.usage.cache_read_tokens)
+    .bind(input.usage.cache_write_tokens)
+    .bind(input.cost_micro)
+    .bind(input.latency_ms)
+    .bind(input.ttft_ms)
+    .bind(input.status)
+    .bind(&input.error_code)
+    .bind(&input.request_body)
+    .bind(&input.response_body)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+
+    // 仅成功结局且 cost>0 累加预算
+    let accrue = matches!(input.status, "ok" | "client_abort") && input.cost_micro > 0;
+    if accrue {
+        for s in &input.subjects {
+            let rows: Vec<(String, String, i64)> = sqlx::query_as(
+                "SELECT id, period, period_start FROM budgets \
+                 WHERE subject_type = ? AND subject_id = ? AND status = 'active'",
+            )
+            .bind(&s.subject_type)
+            .bind(&s.subject_id)
+            .fetch_all(&mut *tx)
+            .await?;
+            for (bid, period, period_start) in rows {
+                if period == "monthly" && is_earlier_month(period_start, now) {
+                    // 翻转:同事务内重置 used=0、更新 period_start,再累加
+                    sqlx::query("UPDATE budgets SET used_micro = ?, period_start = ? WHERE id = ?")
+                        .bind(input.cost_micro)
+                        .bind(now)
+                        .bind(&bid)
+                        .execute(&mut *tx)
+                        .await?;
+                } else {
+                    sqlx::query("UPDATE budgets SET used_micro = used_micro + ? WHERE id = ?")
+                        .bind(input.cost_micro)
+                        .bind(&bid)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+            }
+        }
+    }
+
+    tx.commit().await?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -342,5 +500,222 @@ mod tests {
         let s = "你好世界"; // 12 字节
         assert_eq!(truncate_utf8(s, 0), "…[截断]");
         assert_eq!(truncate_utf8(s, 1), "…[截断]");
+    }
+
+    // ── 预算检查 / 落库事务(T7)──
+
+    use crate::db::open_memory;
+    use crate::test_util::insert_budget;
+
+    fn subj(t: &str, id: &str) -> Subject {
+        Subject {
+            subject_type: t.into(),
+            subject_id: id.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn check_no_budget_is_unlimited_ok() {
+        let db = open_memory().await.unwrap();
+        assert_eq!(
+            check_budgets(&db, &[subj("key", "k1")], 1000).await,
+            BudgetCheck::Ok
+        );
+    }
+
+    #[tokio::test]
+    async fn check_exhausted_returns_subject() {
+        let db = open_memory().await.unwrap();
+        insert_budget(&db, "key", "k1", "total", 1_000_000, 1_000_000, 0).await; // 剩 0
+        assert_eq!(
+            check_budgets(&db, &[subj("key", "k1")], 1000).await,
+            BudgetCheck::Exhausted(subj("key", "k1"))
+        );
+    }
+
+    #[tokio::test]
+    async fn check_min_remaining_across_periods() {
+        let db = open_memory().await.unwrap();
+        // 同主体 monthly 剩 500,total 剩 0 → 取最小 0 → 耗尽
+        insert_budget(
+            &db,
+            "user",
+            "u1",
+            "monthly",
+            1_000_000,
+            999_500,
+            crate::now_epoch(),
+        )
+        .await;
+        insert_budget(&db, "user", "u1", "total", 1_000_000, 1_000_000, 0).await;
+        assert_eq!(
+            check_budgets(&db, &[subj("user", "u1")], crate::now_epoch()).await,
+            BudgetCheck::Exhausted(subj("user", "u1"))
+        );
+    }
+
+    #[tokio::test]
+    async fn check_monthly_rollover_view_resets_remaining() {
+        let db = open_memory().await.unwrap();
+        // period_start 在去年(2024-01),used 满额;视角翻转后剩余 = limit,不拒
+        let last_year = 1_704_067_200; // 2024-01-01 00:00:00 UTC
+        insert_budget(&db, "key", "k1", "monthly", 1_000_000, 1_000_000, last_year).await;
+        let now = crate::now_epoch(); // 2026,远晚于 2024-01
+        assert_eq!(
+            check_budgets(&db, &[subj("key", "k1")], now).await,
+            BudgetCheck::Ok
+        );
+    }
+
+    #[tokio::test]
+    async fn settle_inserts_record_and_accrues_on_ok() {
+        let db = open_memory().await.unwrap();
+        insert_budget(&db, "key", "k1", "total", 10_000_000, 0, 0).await;
+        let input = SettleInput {
+            key_id: "k1".into(),
+            model_slug: "gpt-x".into(),
+            channel_id: Some("c1".into()),
+            usage: Usage {
+                input_tokens: 100,
+                output_tokens: 20,
+                ..Usage::default()
+            },
+            cost_micro: 73_500,
+            latency_ms: Some(120),
+            ttft_ms: Some(40),
+            status: "ok",
+            error_code: None,
+            request_body: None,
+            response_body: None,
+            subjects: vec![subj("key", "k1")],
+        };
+        settle_usage(&db, &input, crate::now_epoch()).await.unwrap();
+        let (cnt, cost): (i64, i64) =
+            sqlx::query_as("SELECT COUNT(*), COALESCE(SUM(cost_micro),0) FROM usage_records")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(cnt, 1);
+        assert_eq!(cost, 73_500);
+        let (used,): (i64,) =
+            sqlx::query_as("SELECT used_micro FROM budgets WHERE subject_id='k1'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(used, 73_500);
+    }
+
+    #[tokio::test]
+    async fn settle_rejected_does_not_accrue() {
+        let db = open_memory().await.unwrap();
+        insert_budget(&db, "key", "k1", "total", 10_000_000, 5000, 0).await;
+        let input = SettleInput {
+            key_id: "k1".into(),
+            model_slug: "gpt-x".into(),
+            channel_id: None,
+            usage: Usage::default(),
+            cost_micro: 0,
+            latency_ms: Some(1),
+            ttft_ms: None,
+            status: "rejected",
+            error_code: Some("budget_exhausted".into()),
+            request_body: None,
+            response_body: None,
+            subjects: vec![subj("key", "k1")],
+        };
+        settle_usage(&db, &input, crate::now_epoch()).await.unwrap();
+        let (used,): (i64,) =
+            sqlx::query_as("SELECT used_micro FROM budgets WHERE subject_id='k1'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(used, 5000); // 未变
+        let (cnt,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM usage_records WHERE status='rejected'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(cnt, 1);
+    }
+
+    #[tokio::test]
+    async fn settle_monthly_rollover_inline_reset_then_accrue() {
+        let db = open_memory().await.unwrap();
+        let last_year = 1_704_067_200; // 2024-01
+        insert_budget(
+            &db, "key", "k1", "monthly", 10_000_000, 9_999_000, last_year,
+        )
+        .await;
+        let now = crate::now_epoch();
+        let input = SettleInput {
+            key_id: "k1".into(),
+            model_slug: "gpt-x".into(),
+            channel_id: Some("c1".into()),
+            usage: Usage {
+                input_tokens: 1,
+                ..Usage::default()
+            },
+            cost_micro: 500,
+            latency_ms: Some(1),
+            ttft_ms: Some(1),
+            status: "ok",
+            error_code: None,
+            request_body: None,
+            response_body: None,
+            subjects: vec![subj("key", "k1")],
+        };
+        settle_usage(&db, &input, now).await.unwrap();
+        let (used, ps): (i64, i64) =
+            sqlx::query_as("SELECT used_micro, period_start FROM budgets WHERE subject_id='k1'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(used, 500, "翻转后应从 0 起累加,而非 9999000+500");
+        assert!(ps > last_year, "period_start 应更新到当前月");
+    }
+
+    #[tokio::test]
+    async fn settle_client_abort_accrues() {
+        let db = open_memory().await.unwrap();
+        insert_budget(&db, "key", "k1", "total", 10_000_000, 0, 0).await;
+        let input = SettleInput {
+            key_id: "k1".into(),
+            model_slug: "gpt-x".into(),
+            channel_id: Some("c1".into()),
+            usage: Usage {
+                input_tokens: 10,
+                ..Usage::default()
+            },
+            cost_micro: 210,
+            latency_ms: Some(5),
+            ttft_ms: Some(2),
+            status: "client_abort",
+            error_code: None,
+            request_body: None,
+            response_body: None,
+            subjects: vec![subj("key", "k1")],
+        };
+        settle_usage(&db, &input, crate::now_epoch()).await.unwrap();
+        let (used,): (i64,) =
+            sqlx::query_as("SELECT used_micro FROM budgets WHERE subject_id='k1'")
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(used, 210);
+    }
+
+    #[tokio::test]
+    async fn subjects_for_key_two_levels() {
+        let key = AuthedKey {
+            id: "k1".into(),
+            owner_type: "user".into(),
+            owner_id: "u1".into(),
+            allowed_models: None,
+            audit: false,
+        };
+        assert_eq!(
+            subjects_for_key(&key),
+            vec![subj("key", "k1"), subj("user", "u1")]
+        );
     }
 }
