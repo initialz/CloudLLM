@@ -1,11 +1,14 @@
 pub mod api;
 pub mod assets;
+pub mod audit_api;
 pub mod budgets;
 pub mod channels;
+pub mod dashboard;
 pub mod handout;
 pub mod keys;
 pub mod limiter;
 pub mod models;
+pub mod reports;
 pub mod teams;
 pub mod users;
 

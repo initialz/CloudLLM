@@ -1,4 +1,4 @@
-use axum::extract::rejection::JsonRejection;
+use axum::extract::rejection::{JsonRejection, QueryRejection};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -108,6 +108,18 @@ impl From<JsonRejection> for ApiError {
             status: StatusCode::BAD_REQUEST,
             code: "bad_request",
             message: "请求体不是合法 JSON 或字段缺失".into(),
+            detail: Some(rej.to_string()),
+        }
+    }
+}
+
+impl From<QueryRejection> for ApiError {
+    fn from(rej: QueryRejection) -> Self {
+        // 查询串反序列化失败(缺必填字段/类型不符)→ 400;同 JSON 路径不回显 serde 细节
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            code: "bad_request",
+            message: "查询参数无效或缺失".into(),
             detail: Some(rej.to_string()),
         }
     }

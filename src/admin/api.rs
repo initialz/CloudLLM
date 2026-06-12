@@ -21,6 +21,9 @@ pub fn router() -> Router<AppState> {
         .merge(super::channels::router())
         .merge(super::models::router())
         .merge(super::budgets::router())
+        .merge(super::reports::router())
+        .merge(super::dashboard::router())
+        .merge(super::audit_api::router())
         // 未匹配的 /admin/api/* 必须是 JSON 404,不得回退到 SPA HTML
         .fallback(api_not_found)
 }
