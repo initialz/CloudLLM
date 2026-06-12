@@ -9,6 +9,7 @@ pub mod crypto;
 pub mod db;
 pub mod error;
 pub mod gateway;
+pub mod jobs;
 #[cfg(test)]
 pub(crate) mod test_util;
 
