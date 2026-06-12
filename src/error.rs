@@ -1,4 +1,4 @@
-use axum::extract::rejection::JsonRejection;
+use axum::extract::rejection::{JsonRejection, QueryRejection};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -34,6 +34,16 @@ impl ApiError {
         }
     }
 
+    /// 登录限速触发(防爆破/探测):不区分维度,统一文案防探测。
+    pub fn too_many_attempts() -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "too_many_attempts",
+            message: "尝试次数过多,请稍后再试".into(),
+            detail: None,
+        }
+    }
+
     pub fn not_found(message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
@@ -52,6 +62,24 @@ impl ApiError {
         }
     }
 
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::FORBIDDEN,
+            code: "forbidden",
+            message: message.into(),
+            detail: None,
+        }
+    }
+
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            code: "conflict",
+            message: message.into(),
+            detail: None,
+        }
+    }
+
     pub fn internal(err: impl std::fmt::Display) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
@@ -59,6 +87,17 @@ impl ApiError {
             message: "内部错误".into(),
             detail: Some(err.to_string()),
         }
+    }
+
+    /// DB 写入错误归类:UNIQUE 冲突 → 409 conflict,其余 → 500 internal。
+    /// 配合「SELECT 预检 + INSERT 兜底」模式:预检给常态下干净的 409,这里关掉竞态窗口。
+    pub fn from_db_unique(err: sqlx::Error, conflict_msg: &'static str) -> Self {
+        if let Some(dberr) = err.as_database_error() {
+            if dberr.is_unique_violation() {
+                return Self::conflict(conflict_msg);
+            }
+        }
+        Self::internal(err)
     }
 }
 
@@ -69,6 +108,18 @@ impl From<JsonRejection> for ApiError {
             status: StatusCode::BAD_REQUEST,
             code: "bad_request",
             message: "请求体不是合法 JSON 或字段缺失".into(),
+            detail: Some(rej.to_string()),
+        }
+    }
+}
+
+impl From<QueryRejection> for ApiError {
+    fn from(rej: QueryRejection) -> Self {
+        // 查询串反序列化失败(缺必填字段/类型不符)→ 400;同 JSON 路径不回显 serde 细节
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            code: "bad_request",
+            message: "查询参数无效或缺失".into(),
             detail: Some(rej.to_string()),
         }
     }

@@ -41,6 +41,10 @@ pub struct Config {
     /// 优雅停机排水时长上限(秒)
     #[serde(default = "default_shutdown_drain_secs")]
     pub shutdown_drain_secs: u64,
+    /// 会话 cookie 是否带 Secure 属性(仅 HTTPS 下传)。
+    /// 默认 false:开发/内网 HTTP 下也能登录;生产经 TLS 终结时置 true。
+    #[serde(default)]
+    pub cookie_secure: bool,
 }
 
 // 手写 Debug:master_key / session_secret 是明文密钥,绝不能随 {:?} 进日志或 backtrace
@@ -52,6 +56,7 @@ impl std::fmt::Debug for Config {
             .field("master_key", &"<redacted>")
             .field("session_secret", &"<redacted>")
             .field("gateway_public_url", &self.gateway_public_url)
+            .field("cookie_secure", &self.cookie_secure)
             .finish()
     }
 }
@@ -141,6 +146,10 @@ impl Config {
         }
         if let Some(v) = lookup("CLOUDLLM_SHUTDOWN_DRAIN_SECS").and_then(|s| s.parse().ok()) {
             self.shutdown_drain_secs = v;
+        }
+        if let Some(v) = lookup("CLOUDLLM_COOKIE_SECURE") {
+            // "true"/"1" 为真,其余(含空串)置 false——显式给值即覆盖
+            self.cookie_secure = matches!(v.trim(), "true" | "1");
         }
     }
 
@@ -292,6 +301,23 @@ mod tests {
         assert_eq!(cfg.cooldown_base_secs, 5);
         assert_eq!(cfg.audit_body_limit, 4096);
         assert_eq!(cfg.shutdown_drain_secs, 15);
+    }
+
+    #[test]
+    fn cookie_secure_defaults_false() {
+        let cfg: Config = toml::from_str(&base_toml()).unwrap();
+        assert!(!cfg.cookie_secure);
+    }
+
+    #[test]
+    fn cookie_secure_env_override_true() {
+        let mut cfg: Config = toml::from_str(&base_toml()).unwrap();
+        cfg.apply_overrides(|k| match k {
+            "CLOUDLLM_COOKIE_SECURE" => Some("true".into()),
+            _ => None,
+        });
+        cfg.validate().unwrap();
+        assert!(cfg.cookie_secure);
     }
 
     #[test]

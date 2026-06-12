@@ -1,6 +1,7 @@
 //! CloudLLM v2 — Rust 一体化 LLM 网关(hub + admin-ui)。
 
 pub mod admin;
+pub mod audit;
 pub mod auth;
 pub mod billing;
 pub mod cli;
@@ -31,6 +32,8 @@ pub struct AppState {
     pub settle_tracker: tokio_util::task::TaskTracker,
     /// 落库失败累计(P3 Dashboard 告警)
     pub settle_failures: Arc<AtomicU64>,
+    /// 登录限速器(进程内,邮箱 + 来源双维度)
+    pub login_limiter: Arc<admin::limiter::LoginLimiter>,
 }
 
 /// 用配置构造 reqwest 客户端:connect_timeout 来自配置;不设全局 timeout
@@ -47,16 +50,19 @@ pub fn build_http_client(config: &config::Config) -> reqwest::Client {
 /// 组装全部路由。网关 /v1/* 在 P2 接入;DefaultBodyLimit 全局生效(管理面亦受益)。
 pub fn app(state: AppState) -> Router {
     let max_body = state.config.max_body_bytes;
-    Router::new()
-        .route("/healthz", get(healthz))
+    let traced = Router::new()
         .nest("/v1", gateway::router())
         .nest("/admin/api", admin::api::router())
         .route("/admin", get(admin::assets::serve_index))
         .route("/admin/", get(admin::assets::serve_index))
         .route("/admin/assets/*path", get(admin::assets::serve_asset))
         .route("/admin/*spa", get(admin::assets::serve_spa))
+        .layer(tower_http::trace::TraceLayer::new_for_http());
+    // healthz 在 TraceLayer 外:K8s 探针打点不进 trace,DB 故障时 healthz 503 也不再刷 ERROR
+    Router::new()
+        .route("/healthz", get(healthz))
+        .merge(traced)
         .layer(DefaultBodyLimit::max(max_body))
-        .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)
 }
 

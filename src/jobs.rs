@@ -4,8 +4,8 @@
 use sqlx::SqlitePool;
 use std::time::Duration;
 
-/// 当前月首秒(UTC epoch)。
-fn month_start_epoch(now: i64) -> i64 {
+/// 当前月首秒(UTC epoch)。预算/报表/Dashboard 共用的月初口径。
+pub fn month_start_epoch(now: i64) -> i64 {
     use time::{Date, Month, OffsetDateTime, Time};
     let dt = OffsetDateTime::from_unix_timestamp(now).unwrap_or(OffsetDateTime::UNIX_EPOCH);
     let first = Date::from_calendar_date(dt.year(), dt.month(), 1)

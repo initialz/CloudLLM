@@ -146,6 +146,7 @@ pub async fn run_serve(config_path: &Path) -> Result<()> {
         http: crate::build_http_client(&cfg),
         settle_tracker: tokio_util::task::TaskTracker::new(),
         settle_failures: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        login_limiter: std::sync::Arc::new(crate::admin::limiter::LoginLimiter::default()),
     };
 
     // 后台维护任务(月翻转 / 冷却恢复 / audit 清理);停机时随 serve 退出 abort,不阻塞排水。

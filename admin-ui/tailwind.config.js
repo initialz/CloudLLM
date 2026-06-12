@@ -11,6 +11,7 @@ export default {
         violet: '#8b5cf6',
         ink: '#e2e8f0',
         dim: '#64748b',
+        subtle: '#8b9bb4',
       },
       fontFamily: {
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
