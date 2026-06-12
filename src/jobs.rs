@@ -37,10 +37,13 @@ pub async fn run_monthly_rollover_once(db: &SqlitePool, now: i64) -> anyhow::Res
 
 /// 冷却恢复:到期的冷却渠道回 active。
 ///
-/// level 一并归零:恢复即视为健康,对齐 T6「成功请求归零」的重置语义。
+/// 恢复保留 cooldown_level:若渠道仍故障,下次 mark_cooldown 在更高 level 上指数升级
+/// (30s→60s→…→600s);level 仅在成功请求时由 reset_cooldown 归零(见 0002 注释与 upstream.rs)。
+/// 恢复即归零会让指数退避失效:冷却期不进候选,level 永不累积,持续故障渠道每 30s 被重试一次。
 pub async fn run_cooldown_recovery_once(db: &SqlitePool, now: i64) -> anyhow::Result<u64> {
+    // 仅改 status/cooldown_until,不动 cooldown_level —— 把退避级别留给下次冷却升级或成功归零。
     let res = sqlx::query(
-        "UPDATE channels SET status = 'active', cooldown_until = NULL, cooldown_level = 0 \
+        "UPDATE channels SET status = 'active', cooldown_until = NULL \
          WHERE status = 'cooldown' AND cooldown_until IS NOT NULL AND cooldown_until <= ?",
     )
     .bind(now)
@@ -154,8 +157,9 @@ mod tests {
         let expired = insert_channel(&db, &mk, "openai", "http://x/v1", "c", 1, "active").await;
         let future = insert_channel(&db, &mk, "openai", "http://y/v1", "c", 1, "active").await;
         let now = crate::now_epoch();
+        // 到期渠道 seed 一个非 0 的退避级别(3),验证恢复保留 level。
         sqlx::query(
-            "UPDATE channels SET status='cooldown', cooldown_level=2, cooldown_until=? WHERE id=?",
+            "UPDATE channels SET status='cooldown', cooldown_level=3, cooldown_until=? WHERE id=?",
         )
         .bind(now - 1)
         .bind(&expired)
@@ -180,13 +184,17 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(s1, "active");
-        assert_eq!(l1, 0);
-        let (s2,): (String,) = sqlx::query_as("SELECT status FROM channels WHERE id=?")
-            .bind(&future)
-            .fetch_one(&db)
-            .await
-            .unwrap();
+        // 恢复保留 level:level 仅在成功请求时由 reset_cooldown 归零,恢复不动它。
+        assert_eq!(l1, 3);
+        // 未到期渠道:status 与 level 都不变。
+        let (s2, l2): (String, i64) =
+            sqlx::query_as("SELECT status, cooldown_level FROM channels WHERE id=?")
+                .bind(&future)
+                .fetch_one(&db)
+                .await
+                .unwrap();
         assert_eq!(s2, "cooldown");
+        assert_eq!(l2, 2);
     }
 
     #[tokio::test]

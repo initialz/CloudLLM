@@ -2945,7 +2945,7 @@ git commit -m "feat(rust): P2-T8 网关 handler 整链(流式 Drop guard 结算 
 
 **任务语义:**
 - **月度翻转(interval 1h):** 写路径兜底。对所有 `period='monthly' AND status='active'` 且 period_start 跨月的预算行,`UPDATE used_micro=0, period_start=<当前月首秒>`。(读路径已视角处理,这里是兜底持久化,避免长期不请求的预算行 period_start 永不更新。)
-- **冷却恢复(interval 30s):** `UPDATE channels SET status='active', cooldown_until=NULL, cooldown_level=0 WHERE status='cooldown' AND cooldown_until <= now`。注意:level 归零(对齐成功重置语义;恢复即视为健康)。
+- **冷却恢复(interval 30s):** `UPDATE channels SET status='active', cooldown_until=NULL WHERE status='cooldown' AND cooldown_until <= now`。注意:**不动 cooldown_level**——恢复保留退避级别,若渠道仍故障则下次 mark_cooldown 在更高 level 上指数升级(30s→60s→…→600s);level 仅在成功请求时由 T6 reset_cooldown 归零(见 0002 注释与 upstream.rs)。恢复即归零会让指数退避失效:冷却期不进候选,level 永不累积,持续故障渠道每 30s 被重试一次。
 - **audit 清理(interval 1h):** 对 `created_at < now - retention_days*86400` 的 usage_records:`request_body=NULL, response_body=NULL`;并删除超期 audit_events。
 - **停机排水:** serve 收到信号 → axum graceful shutdown 停新请求 → `settle_tracker.close()` + `wait`(上限 30s)→ jobs 任务 abort → pool.close。
 
@@ -2988,9 +2988,14 @@ pub async fn run_monthly_rollover_once(db: &SqlitePool, now: i64) -> anyhow::Res
 }
 
 /// 冷却恢复:到期的冷却渠道回 active。
+///
+/// 恢复保留 cooldown_level:若渠道仍故障,下次 mark_cooldown 在更高 level 上指数升级
+/// (30s→60s→…→600s);level 仅在成功请求时由 reset_cooldown 归零(见 0002 注释与 upstream.rs)。
+/// 恢复即归零会让指数退避失效:冷却期不进候选,level 永不累积,持续故障渠道每 30s 被重试一次。
 pub async fn run_cooldown_recovery_once(db: &SqlitePool, now: i64) -> anyhow::Result<u64> {
+    // 仅改 status/cooldown_until,不动 cooldown_level —— 把退避级别留给下次冷却升级或成功归零。
     let res = sqlx::query(
-        "UPDATE channels SET status = 'active', cooldown_until = NULL, cooldown_level = 0 \
+        "UPDATE channels SET status = 'active', cooldown_until = NULL \
          WHERE status = 'cooldown' AND cooldown_until IS NOT NULL AND cooldown_until <= ?",
     )
     .bind(now)
@@ -3089,7 +3094,8 @@ mod tests {
         let expired = insert_channel(&db, &mk, "openai", "http://x/v1", "c", 1, "active").await;
         let future = insert_channel(&db, &mk, "openai", "http://y/v1", "c", 1, "active").await;
         let now = crate::now_epoch();
-        sqlx::query("UPDATE channels SET status='cooldown', cooldown_level=2, cooldown_until=? WHERE id=?")
+        // 到期渠道 seed 一个非 0 的退避级别(3),验证恢复保留 level。
+        sqlx::query("UPDATE channels SET status='cooldown', cooldown_level=3, cooldown_until=? WHERE id=?")
             .bind(now - 1).bind(&expired).execute(&db).await.unwrap();
         sqlx::query("UPDATE channels SET status='cooldown', cooldown_level=2, cooldown_until=? WHERE id=?")
             .bind(now + 600).bind(&future).execute(&db).await.unwrap();
@@ -3098,9 +3104,12 @@ mod tests {
         assert_eq!(n, 1);
         let (s1, l1): (String, i64) = sqlx::query_as("SELECT status, cooldown_level FROM channels WHERE id=?").bind(&expired).fetch_one(&db).await.unwrap();
         assert_eq!(s1, "active");
-        assert_eq!(l1, 0);
-        let (s2,): (String,) = sqlx::query_as("SELECT status FROM channels WHERE id=?").bind(&future).fetch_one(&db).await.unwrap();
+        // 恢复保留 level:level 仅在成功请求时由 reset_cooldown 归零,恢复不动它。
+        assert_eq!(l1, 3);
+        // 未到期渠道:status 与 level 都不变。
+        let (s2, l2): (String, i64) = sqlx::query_as("SELECT status, cooldown_level FROM channels WHERE id=?").bind(&future).fetch_one(&db).await.unwrap();
         assert_eq!(s2, "cooldown");
+        assert_eq!(l2, 2);
     }
 
     #[tokio::test]
@@ -3358,6 +3367,8 @@ git commit -m "feat(rust): P2-T10 真二进制冒烟收口 + P1/P2 遗留清单�
   4. **月翻转判定跨年**:用 `(year, month)` 元组比较(非裸 month),正确处理 12 月 < 次年 1 月;T7 is_earlier_month 实现注明。
   5. **冷却空写**:reset_cooldown 加"原 level=0 且 status=active 则跳过",避免每个成功请求空 UPDATE;T6 实现含此守卫。
   6. **流式 Drop guard 双触发**:SettleOnEnd 在 poll 到 None 时标记并结算(ok),Drop 时 take(若仍 Some 则 client_abort)——take 防重复结算;T8 实现含 done/take 机制。
+
+- **执行期修正(T9):** 冷却恢复不归零 cooldown_level——原文与 0002 注释矛盾且使指数退避失效,控制器裁决改为仅成功请求归零。
 
 - **风险点提示(给评审与执行者):**
   1. **流式 Drop guard 是全计划最高风险点。** `Body::from_stream` 的驱动时机、`SettleOnEnd::drop` 与 `poll_next(None)` 的竞态、`oneshot` 测试中 body 未被驱动等,都可能让 client_abort/ok 的判定在单测里不稳定。T8 流中断测试用了宽松断言(client_abort 或 ok,但必须落一条),严格验证靠 T10 真二进制 curl 中断。执行者若发现 Drop 中 spawn 在某些路径丢失(如 runtime 已关），需确认 settle_tracker 在停机前不被 close。
