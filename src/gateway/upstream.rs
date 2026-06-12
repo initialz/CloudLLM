@@ -235,8 +235,12 @@ pub async fn forward(
         return Err(GatewayError::upstream_failed(protocol));
     }
 
-    let mut rng = rand::thread_rng();
-    let ordered = weighted_shuffle(usable, &mut rng);
+    // rng 限定在洗牌块内即时 drop:ThreadRng 持有 Rc(非 Send),若跨下方 await 存活
+    // 会让整个 forward future 变成 !Send,从而无法挂进要求 Send 的 axum Handler(T8 暴露)。
+    let ordered = {
+        let mut rng = rand::thread_rng();
+        weighted_shuffle(usable, &mut rng)
+    };
     let is_stream = request_body
         .get("stream")
         .and_then(Value::as_bool)

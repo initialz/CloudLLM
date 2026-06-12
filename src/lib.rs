@@ -12,7 +12,7 @@ pub mod gateway;
 #[cfg(test)]
 pub(crate) mod test_util;
 
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::Router;
@@ -43,15 +43,18 @@ pub fn build_http_client(config: &config::Config) -> reqwest::Client {
         .expect("构造 reqwest 客户端")
 }
 
-/// 组装全部路由。网关 /v1/* 在 P2 接入。
+/// 组装全部路由。网关 /v1/* 在 P2 接入;DefaultBodyLimit 全局生效(管理面亦受益)。
 pub fn app(state: AppState) -> Router {
+    let max_body = state.config.max_body_bytes;
     Router::new()
         .route("/healthz", get(healthz))
+        .nest("/v1", gateway::router())
         .nest("/admin/api", admin::api::router())
         .route("/admin", get(admin::assets::serve_index))
         .route("/admin/", get(admin::assets::serve_index))
         .route("/admin/assets/*path", get(admin::assets::serve_asset))
         .route("/admin/*spa", get(admin::assets::serve_spa))
+        .layer(DefaultBodyLimit::max(max_body))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)
 }
