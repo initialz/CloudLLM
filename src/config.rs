@@ -17,6 +17,30 @@ pub struct Config {
     pub session_secret: String,
     #[serde(default)]
     pub gateway_public_url: Option<String>,
+    /// 上游 TCP 连接超时(秒)
+    #[serde(default = "default_upstream_connect_timeout_secs")]
+    pub upstream_connect_timeout_secs: u64,
+    /// 非流式上游请求总超时(秒);流式不设总超时
+    #[serde(default = "default_upstream_timeout_secs")]
+    pub upstream_timeout_secs: u64,
+    /// 冷却指数退避基数(秒)
+    #[serde(default = "default_cooldown_base_secs")]
+    pub cooldown_base_secs: i64,
+    /// 冷却退避上限(秒)
+    #[serde(default = "default_cooldown_max_secs")]
+    pub cooldown_max_secs: i64,
+    /// 审计体截断上限(字节)
+    #[serde(default = "default_audit_body_limit")]
+    pub audit_body_limit: usize,
+    /// 审计体保留天数(超过则清空 request_body/response_body)
+    #[serde(default = "default_audit_retention_days")]
+    pub audit_retention_days: i64,
+    /// 客户端请求体上限(字节);超出 413
+    #[serde(default = "default_max_body_bytes")]
+    pub max_body_bytes: usize,
+    /// 优雅停机排水时长上限(秒)
+    #[serde(default = "default_shutdown_drain_secs")]
+    pub shutdown_drain_secs: u64,
 }
 
 // 手写 Debug:master_key / session_secret 是明文密钥,绝不能随 {:?} 进日志或 backtrace
@@ -37,6 +61,30 @@ fn default_listen() -> String {
 }
 fn default_db_path() -> String {
     "./cloudllm.db".into()
+}
+fn default_upstream_connect_timeout_secs() -> u64 {
+    10
+}
+fn default_upstream_timeout_secs() -> u64 {
+    300
+}
+fn default_cooldown_base_secs() -> i64 {
+    30
+}
+fn default_cooldown_max_secs() -> i64 {
+    600
+}
+fn default_audit_body_limit() -> usize {
+    65536
+}
+fn default_audit_retention_days() -> i64 {
+    30
+}
+fn default_max_body_bytes() -> usize {
+    2 * 1024 * 1024
+}
+fn default_shutdown_drain_secs() -> u64 {
+    25
 }
 
 impl Config {
@@ -68,6 +116,32 @@ impl Config {
         if let Some(v) = lookup("CLOUDLLM_GATEWAY_PUBLIC_URL") {
             self.gateway_public_url = Some(v);
         }
+        if let Some(v) =
+            lookup("CLOUDLLM_UPSTREAM_CONNECT_TIMEOUT_SECS").and_then(|s| s.parse().ok())
+        {
+            self.upstream_connect_timeout_secs = v;
+        }
+        if let Some(v) = lookup("CLOUDLLM_UPSTREAM_TIMEOUT_SECS").and_then(|s| s.parse().ok()) {
+            self.upstream_timeout_secs = v;
+        }
+        if let Some(v) = lookup("CLOUDLLM_COOLDOWN_BASE_SECS").and_then(|s| s.parse().ok()) {
+            self.cooldown_base_secs = v;
+        }
+        if let Some(v) = lookup("CLOUDLLM_COOLDOWN_MAX_SECS").and_then(|s| s.parse().ok()) {
+            self.cooldown_max_secs = v;
+        }
+        if let Some(v) = lookup("CLOUDLLM_AUDIT_BODY_LIMIT").and_then(|s| s.parse().ok()) {
+            self.audit_body_limit = v;
+        }
+        if let Some(v) = lookup("CLOUDLLM_AUDIT_RETENTION_DAYS").and_then(|s| s.parse().ok()) {
+            self.audit_retention_days = v;
+        }
+        if let Some(v) = lookup("CLOUDLLM_MAX_BODY_BYTES").and_then(|s| s.parse().ok()) {
+            self.max_body_bytes = v;
+        }
+        if let Some(v) = lookup("CLOUDLLM_SHUTDOWN_DRAIN_SECS").and_then(|s| s.parse().ok()) {
+            self.shutdown_drain_secs = v;
+        }
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -87,6 +161,22 @@ impl Config {
         self.listen
             .parse::<std::net::SocketAddr>()
             .with_context(|| format!("listen 不是合法地址: {}", self.listen))?;
+        ensure!(
+            self.audit_retention_days > 0,
+            "audit_retention_days 必须 >0,实际 {};0 或负值会把全部 audit 体一夜清空",
+            self.audit_retention_days
+        );
+        ensure!(
+            self.cooldown_base_secs > 0,
+            "cooldown_base_secs 必须 >0,实际 {}",
+            self.cooldown_base_secs
+        );
+        ensure!(
+            self.cooldown_max_secs >= self.cooldown_base_secs,
+            "cooldown_max_secs({})必须 ≥ cooldown_base_secs({})",
+            self.cooldown_max_secs,
+            self.cooldown_base_secs
+        );
         Ok(())
     }
 
@@ -172,6 +262,90 @@ mod tests {
         let toml_text = format!("listen = \"not-an-addr\"\n{}", base_toml());
         let cfg: Config = toml::from_str(&toml_text).unwrap();
         assert!(cfg.validate().unwrap_err().to_string().contains("listen"));
+    }
+
+    #[test]
+    fn gateway_defaults_present() {
+        let cfg: Config = toml::from_str(&base_toml()).unwrap();
+        assert_eq!(cfg.upstream_connect_timeout_secs, 10);
+        assert_eq!(cfg.upstream_timeout_secs, 300);
+        assert_eq!(cfg.cooldown_base_secs, 30);
+        assert_eq!(cfg.cooldown_max_secs, 600);
+        assert_eq!(cfg.audit_body_limit, 65536);
+        assert_eq!(cfg.audit_retention_days, 30);
+        assert_eq!(cfg.max_body_bytes, 2 * 1024 * 1024);
+        assert_eq!(cfg.shutdown_drain_secs, 25);
+    }
+
+    #[test]
+    fn gateway_env_overrides_win() {
+        let mut cfg: Config = toml::from_str(&base_toml()).unwrap();
+        cfg.apply_overrides(|k| match k {
+            "CLOUDLLM_UPSTREAM_TIMEOUT_SECS" => Some("120".into()),
+            "CLOUDLLM_COOLDOWN_BASE_SECS" => Some("5".into()),
+            "CLOUDLLM_AUDIT_BODY_LIMIT" => Some("4096".into()),
+            "CLOUDLLM_SHUTDOWN_DRAIN_SECS" => Some("15".into()),
+            _ => None,
+        });
+        cfg.validate().unwrap();
+        assert_eq!(cfg.upstream_timeout_secs, 120);
+        assert_eq!(cfg.cooldown_base_secs, 5);
+        assert_eq!(cfg.audit_body_limit, 4096);
+        assert_eq!(cfg.shutdown_drain_secs, 15);
+    }
+
+    #[test]
+    fn zero_audit_retention_rejected() {
+        let toml_text = format!("{}\naudit_retention_days = 0\n", base_toml());
+        let cfg: Config = toml::from_str(&toml_text).unwrap();
+        assert!(cfg
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("audit_retention_days"));
+    }
+
+    #[test]
+    fn negative_audit_retention_rejected() {
+        let toml_text = format!("{}\naudit_retention_days = -1\n", base_toml());
+        let cfg: Config = toml::from_str(&toml_text).unwrap();
+        assert!(cfg
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("audit_retention_days"));
+    }
+
+    #[test]
+    fn zero_cooldown_base_rejected() {
+        let toml_text = format!("{}\ncooldown_base_secs = 0\n", base_toml());
+        let cfg: Config = toml::from_str(&toml_text).unwrap();
+        assert!(cfg
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("cooldown_base_secs"));
+    }
+
+    #[test]
+    fn cooldown_max_below_base_rejected() {
+        let toml_text = format!(
+            "{}\ncooldown_base_secs = 100\ncooldown_max_secs = 50\n",
+            base_toml()
+        );
+        let cfg: Config = toml::from_str(&toml_text).unwrap();
+        assert!(cfg
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("cooldown_max_secs"));
+    }
+
+    #[test]
+    fn gateway_toml_overrides_default() {
+        let toml_text = format!("{}\ncooldown_max_secs = 1200\n", base_toml());
+        let cfg: Config = toml::from_str(&toml_text).unwrap();
+        assert_eq!(cfg.cooldown_max_secs, 1200);
     }
 
     #[test]

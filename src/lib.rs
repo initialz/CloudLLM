@@ -2,36 +2,60 @@
 
 pub mod admin;
 pub mod auth;
+pub mod billing;
 pub mod cli;
 pub mod config;
 pub mod crypto;
 pub mod db;
 pub mod error;
+pub mod gateway;
+pub mod jobs;
 #[cfg(test)]
 pub(crate) mod test_util;
 
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::Router;
 use sqlx::SqlitePool;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: SqlitePool,
     pub config: Arc<config::Config>,
+    /// 上游转发共享 HTTP 客户端(连接池复用)
+    pub http: reqwest::Client,
+    /// 结算任务跟踪器:停机时 close + wait 排水
+    pub settle_tracker: tokio_util::task::TaskTracker,
+    /// 落库失败累计(P3 Dashboard 告警)
+    pub settle_failures: Arc<AtomicU64>,
 }
 
-/// 组装全部路由。网关 /v1/* 在 P2 接入。
+/// 用配置构造 reqwest 客户端:connect_timeout 来自配置;不设全局 timeout
+/// (非流式 per-request 设,流式不设)。
+pub fn build_http_client(config: &config::Config) -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(
+            config.upstream_connect_timeout_secs,
+        ))
+        .build()
+        .expect("构造 reqwest 客户端")
+}
+
+/// 组装全部路由。网关 /v1/* 在 P2 接入;DefaultBodyLimit 全局生效(管理面亦受益)。
 pub fn app(state: AppState) -> Router {
+    let max_body = state.config.max_body_bytes;
     Router::new()
         .route("/healthz", get(healthz))
+        .nest("/v1", gateway::router())
         .nest("/admin/api", admin::api::router())
         .route("/admin", get(admin::assets::serve_index))
         .route("/admin/", get(admin::assets::serve_index))
         .route("/admin/assets/*path", get(admin::assets::serve_asset))
         .route("/admin/*spa", get(admin::assets::serve_spa))
+        .layer(DefaultBodyLimit::max(max_body))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)
 }

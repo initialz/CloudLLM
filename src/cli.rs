@@ -143,17 +143,46 @@ pub async fn run_serve(config_path: &Path) -> Result<()> {
     let state = crate::AppState {
         db: pool.clone(),
         config: std::sync::Arc::new(cfg.clone()),
+        http: crate::build_http_client(&cfg),
+        settle_tracker: tokio_util::task::TaskTracker::new(),
+        settle_failures: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
     };
+
+    // 后台维护任务(月翻转 / 冷却恢复 / audit 清理);停机时随 serve 退出 abort,不阻塞排水。
+    let job_handles = crate::jobs::spawn_loops(pool.clone(), cfg.audit_retention_days);
+
     let listener = tokio::net::TcpListener::bind(&cfg.listen)
         .await
         .with_context(|| format!("监听 {}", cfg.listen))?;
     tracing::info!(listen = %cfg.listen, "CloudLLM 启动");
+
+    // TaskTracker 派生 Clone 共享同一跟踪器;此份与 state 内那份是同一个。
+    let tracker = state.settle_tracker.clone();
     axum::serve(listener, crate::app(state))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("服务异常退出")?;
-    tracing::info!("已优雅停机");
+
+    // 优雅停机:已停新请求 → 排水在途结算 → abort jobs → 关库。
+    // 部署契约:preStop sleep + 本排水时长 ≤ K8s terminationGracePeriodSeconds
+    // (v1.2 清单为 5+25≤30),超限会被 SIGKILL 截断丢账;P4 写 Rust 部署清单时锁定此不变量。
+    let drain = std::time::Duration::from_secs(cfg.shutdown_drain_secs);
+    tracing::info!(
+        drain_secs = cfg.shutdown_drain_secs,
+        "停止接收新请求,排水在途结算"
+    );
+    tracker.close();
+    if tokio::time::timeout(drain, tracker.wait()).await.is_err() {
+        tracing::warn!(
+            drain_secs = cfg.shutdown_drain_secs,
+            "结算排水超时,仍有在途任务被丢弃"
+        );
+    }
+    for h in job_handles {
+        h.abort();
+    }
     pool.close().await;
+    tracing::info!("已优雅停机");
     Ok(())
 }
 
