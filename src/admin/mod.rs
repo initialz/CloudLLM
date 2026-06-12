@@ -1,8 +1,10 @@
 pub mod api;
 pub mod assets;
+pub mod channels;
 pub mod handout;
 pub mod keys;
 pub mod limiter;
+pub mod models;
 pub mod teams;
 pub mod users;
 
