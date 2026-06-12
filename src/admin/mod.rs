@@ -1,5 +1,6 @@
 pub mod api;
 pub mod assets;
+pub mod budgets;
 pub mod channels;
 pub mod handout;
 pub mod keys;
