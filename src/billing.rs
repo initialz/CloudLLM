@@ -29,12 +29,15 @@ fn line_cost_micro(tokens: i64, price_per_mtok: i64) -> i64 {
     }
     debug_assert!(price_per_mtok >= 0, "模型单价不能为负: {price_per_mtok}");
     // release 下脏价格 clamp,不炸热路径
+    // release 下负单价 clamp 为 0;debug 下由上方 debug_assert 拦截,故无法在测试中直接覆盖
     let price = price_per_mtok.max(0);
     // ceil(tokens * price / 1e6);i128 防溢出(tokens ~1e7、price ~1e9 → 1e16,仍在 i64 内,
     // 但乘积中间值用 i128 稳妥)
     let numerator = tokens as i128 * price as i128;
     let micro = 1_000_000i128;
-    (((numerator + micro - 1) / micro) as i64).max(0)
+    let quotient = (numerator + micro - 1) / micro;
+    // 极端 tokens×price 下饱和到 i64::MAX,宁多记不少记;TS 版以阈值抛错,Rust 选饱和
+    i64::try_from(quotient).unwrap_or(i64::MAX).max(0)
 }
 
 /// 四档求和。token / price 任一非法在各自档位处理:负 token clamp 0、负价 clamp 0。
@@ -53,6 +56,7 @@ pub enum Protocol {
 }
 
 /// 取整型字段,缺失/非整数视为 0(与 TS num() 一致)
+/// 有意分歧:JSON 浮点(如 10.0)返回 0,TS 版会接受;两家上游 token 计数恒为整数,选更严格的 as_i64
 fn num(v: &Value, key: &str) -> i64 {
     v.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
@@ -191,7 +195,26 @@ mod tests {
     }
 
     #[test]
-    fn cost_negative_price_clamps_to_zero() {
+    fn cost_all_four_tiers_each_ceil_up() {
+        // 四档各 1 token、单价各 500_000 micro/MTok:每档 1*500000/1e6 = 0.5 micro 独立 ceil → 1
+        // 总额恰为 4,锁定「最多多记 4 micro」性质(逐档 ceil 后求和的上界)
+        let p = Prices {
+            input_micro: 500_000,
+            output_micro: 500_000,
+            cache_read_micro: 500_000,
+            cache_write_micro: 500_000,
+        };
+        let u = Usage {
+            input_tokens: 1,
+            output_tokens: 1,
+            cache_read_tokens: 1,
+            cache_write_tokens: 1,
+        };
+        assert_eq!(compute_cost_micro(&u, &p), 4);
+    }
+
+    #[test]
+    fn cost_negative_tokens_clamp_to_zero() {
         // release 下 clamp;测试构建会触发 debug_assert,故此用例用 catch:改为直接验证 clamp 语义
         // —— 见实现说明:debug_assert 只在 debug_assertions 开;cargo test 默认开 debug_assertions。
         // 因此这里不喂负价(会 panic),改测负 token clamp。
@@ -310,5 +333,14 @@ mod tests {
     fn truncate_exact_limit_unchanged() {
         let s = "abcdef"; // 6 字节
         assert_eq!(truncate_utf8(s, 6), s);
+    }
+
+    #[test]
+    fn truncate_tiny_limit_returns_suffix_only() {
+        // 超长输入,limit 极小(0 与 1):首字符为 3 字节多字节字符,
+        // 边界回退至 0 → 输出恰为后缀「…[截断]」且不 panic
+        let s = "你好世界"; // 12 字节
+        assert_eq!(truncate_utf8(s, 0), "…[截断]");
+        assert_eq!(truncate_utf8(s, 1), "…[截断]");
     }
 }
