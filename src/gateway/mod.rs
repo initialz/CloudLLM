@@ -297,6 +297,8 @@ impl SettleCtx {
                 channel_id: Some(self.channel_id),
                 usage,
                 cost_micro: cost,
+                // 流式 latency_ms = 完整传输耗时(至流尽 / 中断 self.latency_ms 起算),
+                // 非流式 = 响应缓冲完成耗时;两者语义有意不同,流式包含客户端读取节奏。
                 latency_ms: Some(self.latency_ms.elapsed().as_millis() as i64),
                 ttft_ms: Some(self.ttft_ms),
                 status,
@@ -332,6 +334,13 @@ impl futures_util::Stream for SettleOnEnd {
                 }
                 Poll::Ready(None)
             }
+            Poll::Ready(Some(Err(e))) => {
+                // 上游流中错误:不在此结算,由 Drop 兜底以 client_abort 落账(已传输部分计费)。
+                // 0001 status CHECK 无 stream_error 值,区分留待未来迁移;对运维而言
+                // client_abort = 流异常终止的总称。此处 warn 让上游流中断可观测。
+                tracing::warn!(error = %e, "上游流中错误(流将中断,由 Drop 以 client_abort 兜底结算)");
+                Poll::Ready(Some(Err(e)))
+            }
             other => other,
         }
     }
@@ -341,6 +350,12 @@ impl Drop for SettleOnEnd {
     fn drop(&mut self) {
         // 未正常结束就被 drop = 客户端中断
         if let Some(ctx) = self.ctx.take() {
+            // Drop 在 runtime 拆除后触发时 tokio::spawn 会 panic → 与正在展开的 panic
+            // 叠加成双 panic → abort;此守卫让 Drop 不可失败:无 runtime 时仅告警并放弃。
+            if tokio::runtime::Handle::try_current().is_err() {
+                tracing::warn!("runtime 已关闭,放弃一条 client_abort 结算");
+                return;
+            }
             ctx.settle("client_abort");
         }
     }
@@ -450,6 +465,12 @@ mod tests {
         .await;
         assert_eq!(resp.status(), StatusCode::OK);
         wait_settle(&state).await;
+        // 恰好一条:防双结算
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM usage_records")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "非流式应恰落一条结算");
         let (cost, status, kid_db): (i64, String, String) =
             sqlx::query_as("SELECT cost_micro, status, key_id FROM usage_records LIMIT 1")
                 .fetch_one(&state.db)
@@ -501,6 +522,12 @@ mod tests {
             .unwrap()
             .contains("预算已用尽"));
         wait_settle(&state).await;
+        // 恰好一条:预算耗尽只 spawn 一条 rejected 记录
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM usage_records")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "预算耗尽应恰落一条 rejected 结算");
         let (status, code): (String, Option<String>) =
             sqlx::query_as("SELECT status, error_code FROM usage_records LIMIT 1")
                 .fetch_one(&state.db)
@@ -600,6 +627,12 @@ mod tests {
         // 读尽流体(触发正常结束结算)
         let _ = resp.into_body().collect().await.unwrap().to_bytes();
         wait_settle(&state).await;
+        // 恰好一条:锁死 Option::take 防双结算(若回归双结算此断言会失败)
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM usage_records")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "正常读尽应恰落一条结算,防双结算");
         let (cost, status): (i64, String) =
             sqlx::query_as("SELECT cost_micro, status FROM usage_records LIMIT 1")
                 .fetch_one(&state.db)
@@ -657,6 +690,12 @@ mod tests {
         // 不读完,直接 drop body 模拟客户端中断
         drop(resp.into_body());
         wait_settle(&state).await;
+        // 恰好一条:锁死 Option::take 防双结算(Drop 与 poll_next 不得同时结算)
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM usage_records")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "中断应恰落一条结算,防 Drop/poll_next 双结算");
         let (status,): (String,) = sqlx::query_as("SELECT status FROM usage_records LIMIT 1")
             .fetch_one(&state.db)
             .await
