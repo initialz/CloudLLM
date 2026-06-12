@@ -70,7 +70,10 @@ async fn login(
         .and_then(|v| v.split(',').next())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "direct".into());
-    let email_key = format!("email:{}", req.email);
+    // 限速桶按规范化邮箱聚合:trim + 小写。与 DB 查询的大小写敏感性无关——
+    // 这里只要求「同一账号的所有大小写/空格变体落进同一计数桶」,
+    // 否则 Admin@x.com / admin@x.com 会是两个桶,可被大小写变体绕过限速。
+    let email_key = format!("email:{}", req.email.trim().to_lowercase());
     let source_key = format!("source:{source}");
     // 限速检查必须在 DB 查询前:被锁时直接拒,不暴露查询/时序差异
     if state.login_limiter.check(&email_key, now).is_err()
@@ -82,6 +85,7 @@ async fn login(
     // 失败收口:计两个维度 + 写审计(actor=None,subject=email,detail={source})。
     // 两个失败出口共用,避免复制。返回统一文案 ApiError。
     let on_failure = || async {
+        // 失败响应同步等 audit 落库:相对前面 argon2 校验的成本可忽略,且失败路径慢一点无碍
         state.login_limiter.record_failure(&email_key, now);
         state.login_limiter.record_failure(&source_key, now);
         crate::audit::record(
@@ -123,7 +127,7 @@ async fn login(
 
     let session = SessionData {
         user_id: id,
-        exp: now_epoch() + SESSION_TTL_SECS,
+        exp: now + SESSION_TTL_SECS,
     };
     let value = encode_session(&session, &state.config.session_secret);
     Ok((
@@ -177,6 +181,29 @@ mod tests {
                 "/admin/api/login",
                 json!({"email": email, "password": password}),
             ))
+            .await
+            .unwrap()
+    }
+
+    // 带 XFF 来源的登录:用于把 source 维度按客户端 IP 区分,从而隔离 email 维度。
+    async fn login_from(
+        state: &AppState,
+        email: &str,
+        password: &str,
+        xff: &str,
+    ) -> axum::http::Response<Body> {
+        let req = json_request(
+            "POST",
+            "/admin/api/login",
+            json!({"email": email, "password": password}),
+        );
+        let (mut parts, body) = req.into_parts();
+        parts.headers.insert(
+            "x-forwarded-for",
+            axum::http::HeaderValue::from_str(xff).unwrap(),
+        );
+        app(state.clone())
+            .oneshot(Request::from_parts(parts, body))
             .await
             .unwrap()
     }
@@ -360,6 +387,45 @@ mod tests {
             assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
         }
         let resp = login(&state, "admin@x.com", "Adm1n!pass").await;
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(body_json(resp).await["error"]["code"], "too_many_attempts");
+    }
+
+    #[tokio::test]
+    async fn login_source_locked_across_distinct_emails() {
+        // source 维度独立锁定:5 个不同邮箱各失败一次(同来源 direct,均不带 XFF)
+        // → 第 6 个全新邮箱即触发 source 桶限速 429,证明来源维度与邮箱维度独立计数
+        let state = state_with_admin().await;
+        for i in 0..5 {
+            let resp = login(&state, &format!("ghost{i}@x.com"), "wrong").await;
+            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        }
+        // 全新邮箱(其 email 桶为空),命中的只可能是同来源的 source 桶
+        let resp = login(&state, "fresh@x.com", "wrong").await;
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(body_json(resp).await["error"]["code"], "too_many_attempts");
+    }
+
+    #[tokio::test]
+    async fn login_email_case_variants_share_limiter_bucket() {
+        // 邮箱规范化防大小写绕过:同一账号 5 种大小写变体各失败一次。
+        // 每次来源 IP(XFF)都不同 → source 桶各计 1 不触发,隔离出 email 维度;
+        // 因 email 桶按小写聚合,5 个变体累加进同一桶 → 第 6 次该邮箱触发 429。
+        // (未规范化时这是 6 个独立 email 桶,均不达阈值,第 6 次会放行 200。)
+        let state = state_with_admin().await;
+        let variants = [
+            "Admin@x.com",
+            "ADMIN@x.com",
+            "admin@X.COM",
+            "aDmIn@x.com",
+            "Admin@X.Com",
+        ];
+        for (i, v) in variants.iter().enumerate() {
+            let resp = login_from(&state, v, "wrong", &format!("10.0.0.{i}")).await;
+            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "变体 {v} 应是 401");
+        }
+        // 第 6 次:全新来源 IP(source 桶为空)+ 正确密码,只可能被 email 桶锁
+        let resp = login_from(&state, "admin@x.com", "Adm1n!pass", "10.0.0.99").await;
         assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(body_json(resp).await["error"]["code"], "too_many_attempts");
     }
