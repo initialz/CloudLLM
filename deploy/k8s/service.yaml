@@ -12,5 +12,5 @@ spec:
     app.kubernetes.io/name: cloudllm
   ports:
     - name: http
-      port: 7100
-      targetPort: 7100
+      port: 7200
+      targetPort: 7200

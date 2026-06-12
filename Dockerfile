@@ -24,5 +24,5 @@ COPY --from=builder /build/target/release/cloudllm /usr/local/bin/cloudllm
 COPY --chmod=0755 deploy/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 USER cloudllm
 WORKDIR /data
-EXPOSE 7100
+EXPOSE 7200
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

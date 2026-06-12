@@ -9,8 +9,8 @@ CloudLLM 是 Rust 单二进制 LLM 网关,数据全部落在一个 SQLite 库(`/
 | `namespace.yaml` | Namespace | `cloudllm` 命名空间 |
 | `pvc.yaml` | PersistentVolumeClaim | 10Gi 数据卷(库 + 配置 + 密钥) |
 | `deployment.yaml` | Deployment | 单副本应用,Recreate,非 root,排水契约 35s |
-| `service.yaml` | Service | ClusterIP,端口 7100 |
-| `ingress.yaml` | Ingress | 对外 host,/ 全量转发到 7100 |
+| `service.yaml` | Service | ClusterIP,端口 7200 |
+| `ingress.yaml` | Ingress | 对外 host,/ 全量转发到 7200 |
 
 部署前先把清单里的占位符替换成你的环境:`<registry>/cloudllm:<tag>`(镜像)、`llm.<domain>`(对外域名,`deployment.yaml` 的 `CLOUDLLM_GATEWAY_PUBLIC_URL` 与 `ingress.yaml` 的 host 必须一致)、以及按需取消注释 `storageClassName`、`ingressClassName`、TLS / nginx SSE 注解。
 
@@ -27,7 +27,7 @@ docker push <registry>/cloudllm:<sha>
 
 然后把 `deployment.yaml` 里的 `image: <registry>/cloudllm:<tag>` 替换成刚推送的 `<registry>/cloudllm:<sha>`。
 
-容器以非 root(uid 65532)运行;K8s 用 `fsGroup: 65532` 接管 PVC 属组,卷写入权限无碍。首次启动时 entrypoint 会跑 `cloudllm init`(自动生成 `cloudllm.toml`、初始化库、打印初始管理员密码到日志),随后 `serve` 监听 7100。
+容器以非 root(uid 65532)运行;K8s 用 `fsGroup: 65532` 接管 PVC 属组,卷写入权限无碍。首次启动时 entrypoint 会跑 `cloudllm init`(自动生成 `cloudllm.toml`、初始化库、打印初始管理员密码到日志),随后 `serve` 监听 7200。
 
 ---
 

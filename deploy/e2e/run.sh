@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../.."
 NET=cloudllm-e2e
 APP=cloudllm-e2e-app
 MOCK=cloudllm-e2e-mock
-BASE=http://localhost:17100
+BASE=http://localhost:17200
 COOKIE=$(mktemp)
 PASS=0
 
@@ -32,7 +32,7 @@ docker network create "$NET" >/dev/null
 docker run -d --name "$MOCK" --network "$NET" \
   -v "$PWD/deploy/e2e/mock_upstream.py:/mock.py:ro" \
   python:3.12-alpine python3 /mock.py >/dev/null
-docker run -d --name "$APP" --network "$NET" -p 17100:7100 cloudllm:e2e >/dev/null
+docker run -d --name "$APP" --network "$NET" -p 17200:7200 cloudllm:e2e >/dev/null
 for i in $(seq 1 30); do
   curl -fsS "$BASE/healthz" >/dev/null 2>&1 && break
   [ "$i" = 30 ] && die "healthz 30s 未就绪"

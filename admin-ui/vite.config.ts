@@ -10,6 +10,6 @@ export default defineConfig({
   },
   server: {
     // 开发模式:API 代理到本地 cloudllm 进程
-    proxy: { '/admin/api': 'http://localhost:7100' },
+    proxy: { '/admin/api': 'http://localhost:7200' },
   },
 });

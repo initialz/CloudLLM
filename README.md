@@ -63,7 +63,7 @@ cargo build --release
 # 初始化：生成 cloudllm.toml + cloudllm.db，并打印初始管理员密码（仅此一次，请立即保存）
 ./target/release/cloudllm init
 
-# 启动：默认监听 0.0.0.0:7100
+# 启动：默认监听 0.0.0.0:7200
 ./target/release/cloudllm serve
 ```
 
@@ -72,7 +72,7 @@ cargo build --release
 启动后打开管理台登录：
 
 ```
-http://localhost:7100/admin
+http://localhost:7200/admin
 ```
 
 > 根路径 `/` 是网关协议面（供 SDK / curl 调用），**管理台挂在 `/admin`**，别把浏览器指向根路径。
@@ -93,9 +93,9 @@ docker compose up -d --build
 docker compose logs cloudllm | grep 初始密码
 ```
 
-数据持久化在 named volume **`cloudllm-data`**，挂载到容器内 `/data`——**配置、`master_key`、SQLite 库全部落在那里**。删除该卷即丢失全部数据与密钥。管理台同样在 `http://localhost:7100/admin`。
+数据持久化在 named volume **`cloudllm-data`**，挂载到容器内 `/data`——**配置、`master_key`、SQLite 库全部落在那里**。删除该卷即丢失全部数据与密钥。管理台同样在 `http://localhost:7200/admin`。
 
-> compose 默认通过 `CLOUDLLM_GATEWAY_PUBLIC_URL` 把网关对外地址设为 `http://localhost:7100`（接入说明里展示给成员），按实际部署改它。
+> compose 默认通过 `CLOUDLLM_GATEWAY_PUBLIC_URL` 把网关对外地址设为 `http://localhost:7200`（接入说明里展示给成员），按实际部署改它。
 
 ---
 
@@ -105,7 +105,7 @@ docker compose logs cloudllm | grep 初始密码
 
 | 字段 | 默认值 | 说明 | 环境变量覆盖名 |
 | --- | --- | --- | --- |
-| `listen` | `"0.0.0.0:7100"` | 监听地址 | `CLOUDLLM_LISTEN` |
+| `listen` | `"0.0.0.0:7200"` | 监听地址 | `CLOUDLLM_LISTEN` |
 | `db_path` | `"./cloudllm.db"` | SQLite 路径 | `CLOUDLLM_DB_PATH` |
 | `master_key` | **必填** | 渠道凭证信封加密主密钥，base64（解码后 32 字节） | `CLOUDLLM_MASTER_KEY` |
 | `session_secret` | **必填** | 管理会话 HMAC 密钥，≥32 字符 | `CLOUDLLM_SESSION_SECRET` |
@@ -206,17 +206,17 @@ cargo fmt --check && \
   cargo test --locked
 ```
 
-**管理台（admin-ui）开发**：`admin-ui/vite.config.ts` 已配 dev proxy，把 `/admin/api` 代理到本地 `http://localhost:7100` 的 cloudllm 进程。因此开发流程是——先起后端、再起 Vite dev server 调试前端：
+**管理台（admin-ui）开发**：`admin-ui/vite.config.ts` 已配 dev proxy，把 `/admin/api` 代理到本地 `http://localhost:7200` 的 cloudllm 进程。因此开发流程是——先起后端、再起 Vite dev server 调试前端：
 
 ```bash
-# 终端 1：起后端（管理台 API 在 :7100）
+# 终端 1：起后端（管理台 API 在 :7200）
 cargo run -- serve
 
-# 终端 2：起前端热重载（/admin/api 自动代理到 :7100）
+# 终端 2：起前端热重载（/admin/api 自动代理到 :7200）
 cd admin-ui && npm install && npm run dev
 ```
 
-改完前端、要验证嵌进二进制的成品时，跑 `npm run build` 产出静态资源，再 `cargo run -- serve`，访问 `http://localhost:7100/admin` 看 rust-embed 嵌入后的实际效果。
+改完前端、要验证嵌进二进制的成品时，跑 `npm run build` 产出静态资源，再 `cargo run -- serve`，访问 `http://localhost:7200/admin` 看 rust-embed 嵌入后的实际效果。
 
 ---
 

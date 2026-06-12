@@ -38,14 +38,14 @@ pub async fn run_init(config_path: &Path, admin_email: &str) -> Result<InitOutco
 
     let toml_text = format!(
         r#"# CloudLLM 配置(由 --init 生成)
-listen = "0.0.0.0:7100"
+listen = "0.0.0.0:7200"
 db_path = "{db}"
 # 渠道凭证信封加密主密钥(base64 32 字节)。丢失后已存渠道凭证不可恢复,务必备份。
 master_key = "{master_key}"
 # 管理会话签名密钥(≥32 字符)。更换将使所有已登录会话失效。
 session_secret = "{session_secret}"
 # 网关对外地址(生成成员接入说明用,可改)
-gateway_public_url = "http://localhost:7100"
+gateway_public_url = "http://localhost:7200"
 "#,
         db = db_path.display(),
     );
