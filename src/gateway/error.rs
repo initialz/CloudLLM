@@ -86,7 +86,7 @@ impl IntoResponse for GatewayError {
                 "error": { "type": self.anthropic_error_type(), "message": self.message }
             }),
         };
-        // content-type 显式 application/json(axum::Json 会设;此处用 Response builder 保持一致)
+        // axum::Json 负责设置 content-type: application/json
         (self.status, axum::Json(body)).into_response()
     }
 }
