@@ -66,6 +66,12 @@ curl -fsS -b "$COOKIE" -H 'content-type: application/json' -d '{
   "$BASE/admin/api/models" >/dev/null || die "建模型失败"
 ok "渠道与模型就绪"
 
+say "根路径接入页注入模型清单"
+GUIDE=$(curl -fsS "$BASE/")
+echo "$GUIDE" | grep -q 'openai/gpt-test' || die "接入页未注入模型 openai/gpt-test"
+echo "$GUIDE" | grep -q 'window.__MODELS__' || die "接入页缺模型注入点"
+ok "接入页就绪,模型清单已注入"
+
 say "签发 Key(owner=admin,月度预算 100 CNY)"
 ADMIN_ID=$(curl -fsS -b "$COOKIE" "$BASE/admin/api/users" | python3 -c \
   'import json,sys; print(json.load(sys.stdin)["users"][0]["id"])')
