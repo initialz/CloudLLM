@@ -114,6 +114,8 @@ pub struct Subject {
     pub subject_id: String,
 }
 
+/// 无 app→team 三级上卷:0001 schema owner_type 仅 user/team(TS 版有 app 类型);
+/// 若未来加 owner_type 需同步扩展此处。
 pub fn subjects_for_key(key: &AuthedKey) -> Vec<Subject> {
     vec![
         Subject {
@@ -166,6 +168,8 @@ fn is_earlier_month(ts: i64, now: i64) -> bool {
 }
 
 /// 读路径预算检查。月翻转仅视角处理,不写库。
+/// TOCTOU:检查与落库之间存在并发窗口,接受少量超透(准实时截断);
+/// usage_records 台账为事实源,对齐 TS 版取舍。
 pub async fn check_budgets(db: &SqlitePool, subjects: &[Subject], now: i64) -> BudgetCheck {
     for s in subjects {
         let rows: Vec<(String, i64, i64, i64)> = match sqlx::query_as(
@@ -200,6 +204,12 @@ pub async fn check_budgets(db: &SqlitePool, subjects: &[Subject], now: i64) -> B
 
 /// 单事务落库:INSERT usage_records + 命中预算行 UPDATE(含月翻转内联)。
 pub async fn settle_usage(db: &SqlitePool, input: &SettleInput, now: i64) -> anyhow::Result<()> {
+    // 负成本只能来自调用方绕过 compute_cost_micro 的 bug:宁响不哑(对齐 TS 版 settleBudgets 抛错的意图,Rust 不 panic 写路径,改为响亮日志)
+    debug_assert!(input.cost_micro >= 0, "settle_usage 收到负 cost_micro");
+    if input.cost_micro < 0 {
+        tracing::error!(cost_micro = input.cost_micro, key_id = %input.key_id, "settle_usage 收到负 cost_micro,按 0 处理");
+    }
+
     let mut tx = db.begin().await?;
 
     sqlx::query(
@@ -216,7 +226,8 @@ pub async fn settle_usage(db: &SqlitePool, input: &SettleInput, now: i64) -> any
     .bind(input.usage.output_tokens)
     .bind(input.usage.cache_read_tokens)
     .bind(input.usage.cache_write_tokens)
-    .bind(input.cost_micro)
+    // 负值以 0 落库,防污染 SUM 报表
+    .bind(input.cost_micro.max(0))
     .bind(input.latency_ms)
     .bind(input.ttft_ms)
     .bind(input.status)
@@ -242,8 +253,13 @@ pub async fn settle_usage(db: &SqlitePool, input: &SettleInput, now: i64) -> any
             for (bid, period, period_start) in rows {
                 if period == "monthly" && is_earlier_month(period_start, now) {
                     // 翻转:同事务内重置 used=0、更新 period_start,再累加
+                    // 此分支是读-改-写:跨月首笔并发结算存在丢失更新窗口(仅月界瞬间),
+                    // 由 T9 月度翻转 job 兜底校正;非翻转分支的 used_micro = used_micro + ? 是引擎级原子,无此窗口。
+                    // :memory: 测试单连接跑不出并发,绿灯不证明并发安全
                     sqlx::query("UPDATE budgets SET used_micro = ?, period_start = ? WHERE id = ?")
                         .bind(input.cost_micro)
+                        // period_start 此处是「本周期首笔结算时间」而非自然月起点;
+                        // 读路径按 (year,month) 比较,月内不会重复翻转;报表不得把它当账期边界
                         .bind(now)
                         .bind(&bid)
                         .execute(&mut *tx)
@@ -597,6 +613,37 @@ mod tests {
                 .unwrap();
         assert_eq!(cnt, 1);
         assert_eq!(cost, 73_500);
+        // 逐列断言:锁死 INSERT 的 16 个绑定位置序,任何列错位都会被这条揪出
+        #[allow(clippy::type_complexity)]
+        let row: (
+            Option<String>, // channel_id
+            String,         // model_slug
+            Option<i64>,    // latency_ms
+            Option<i64>,    // ttft_ms
+            Option<String>, // error_code
+            i64,            // input_tokens
+            i64,            // output_tokens
+            i64,            // cache_read_tokens
+            i64,            // cache_write_tokens
+            String,         // status
+        ) = sqlx::query_as(
+            "SELECT channel_id, model_slug, latency_ms, ttft_ms, error_code, \
+             input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, status \
+             FROM usage_records",
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(row.0, input.channel_id);
+        assert_eq!(row.1, input.model_slug);
+        assert_eq!(row.2, input.latency_ms);
+        assert_eq!(row.3, input.ttft_ms);
+        assert_eq!(row.4, input.error_code);
+        assert_eq!(row.5, input.usage.input_tokens);
+        assert_eq!(row.6, input.usage.output_tokens);
+        assert_eq!(row.7, input.usage.cache_read_tokens);
+        assert_eq!(row.8, input.usage.cache_write_tokens);
+        assert_eq!(row.9, input.status);
         let (used,): (i64,) =
             sqlx::query_as("SELECT used_micro FROM budgets WHERE subject_id='k1'")
                 .fetch_one(&db)
