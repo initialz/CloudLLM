@@ -10,6 +10,7 @@ pub mod crypto;
 pub mod db;
 pub mod error;
 pub mod gateway;
+pub mod guide;
 pub mod jobs;
 #[cfg(test)]
 pub(crate) mod test_util;
@@ -51,6 +52,7 @@ pub fn build_http_client(config: &config::Config) -> reqwest::Client {
 pub fn app(state: AppState) -> Router {
     let max_body = state.config.max_body_bytes;
     let traced = Router::new()
+        .route("/", get(guide::serve_guide))
         .nest("/v1", gateway::router())
         .nest("/admin/api", admin::api::router())
         .route("/admin", get(admin::assets::serve_index))
