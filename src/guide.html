@@ -127,6 +127,46 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
 }
 input::placeholder { color: #56657d; }
+/* 供应商/模型 二级联动:并排一行,窄屏自动换行 */
+.model-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.model-col {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.model-col label {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 7px;
+}
+/* 暗色页面下原生 select/option 需显式设色,保证可读性 */
+select {
+  width: 100%;
+  background: rgba(6, 8, 15, 0.7);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  padding: 11px 13px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+select:focus {
+  border-color: var(--neon);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.12);
+}
+select option {
+  background: var(--panel);
+  color: var(--text);
+}
 .btn {
   flex: 0 0 auto;
   background: rgba(34, 211, 238, 0.08);
@@ -246,9 +286,17 @@ footer.foot .dot { color: var(--neon); }
     </div>
 
     <div class="field">
-      <label for="model">模型</label>
-      <input type="text" id="model" list="model-list" placeholder="选择或手动填写模型名" spellcheck="false">
-      <datalist id="model-list"></datalist>
+      <div class="model-grid">
+        <div class="model-col">
+          <label for="provider">供应商</label>
+          <select id="provider"></select>
+        </div>
+        <div class="model-col">
+          <label for="model">模型</label>
+          <select id="model"></select>
+          <input type="text" id="model-custom" placeholder="输入模型名" spellcheck="false" style="display:none">
+        </div>
+      </div>
     </div>
 
     <div class="tabs" id="tabs">
@@ -293,12 +341,16 @@ footer.foot .dot { color: var(--neon); }
     "curl": null
   };
 
+  // 「自定义…」选项的固定哨兵值(不会与任何前缀冲突)
+  var CUSTOM_VALUE = "__custom__";
+
   var els = {
     key: document.getElementById("key"),
     toggleKey: document.getElementById("toggle-key"),
     base: document.getElementById("base"),
+    provider: document.getElementById("provider"),
     model: document.getElementById("model"),
-    datalist: document.getElementById("model-list"),
+    modelCustom: document.getElementById("model-custom"),
     tabs: document.getElementById("tabs"),
     out: document.getElementById("out"),
     note: document.getElementById("note"),
@@ -316,7 +368,7 @@ footer.foot .dot { color: var(--neon); }
     return String(v || "").trim().replace(/\/+$/, "");
   }
 
-  // 按当前 Tab 协议过滤候选模型
+  // 按当前 Tab 协议过滤候选模型的完整 slug 列表
   function candidates() {
     var provider = TAB_PROVIDER[currentTab];
     if (!provider) {
@@ -327,23 +379,96 @@ footer.foot .dot { color: var(--neon); }
     }).map(function (m) { return m.slug; });
   }
 
-  // 刷新 datalist,并在当前模型值不属于新候选时自动切换
+  // 取 slug 的供应商前缀:第一个 "/" 之前的部分;不含 "/" 归入「其他」
+  function prefixOf(slug) {
+    var i = slug.indexOf("/");
+    return i === -1 ? "其他" : slug.slice(0, i);
+  }
+
+  // 当前 Tab 候选下,去重后字典序排列的供应商前缀列表
+  function providerPrefixes() {
+    var seen = {};
+    var list = [];
+    candidates().forEach(function (slug) {
+      var p = prefixOf(slug);
+      if (!seen[p]) {
+        seen[p] = true;
+        list.push(p);
+      }
+    });
+    list.sort();
+    return list;
+  }
+
+  // 给定供应商前缀,返回该前缀下的完整 slug 列表(字典序)
+  function modelsForPrefix(prefix) {
+    var list = candidates().filter(function (slug) {
+      return prefixOf(slug) === prefix;
+    });
+    list.sort();
+    return list;
+  }
+
+  // 是否处于「自定义…」手填模式
+  function isCustom() {
+    return els.provider.value === CUSTOM_VALUE;
+  }
+
+  // 当前要写入配置的模型名:自定义模式取手填框,否则取模型下拉
+  function currentModel() {
+    return isCustom()
+      ? els.modelCustom.value.trim()
+      : els.model.value.trim();
+  }
+
+  // 重建供应商下拉:协议过滤后的前缀 + 末尾固定「自定义…」
+  // 尽量保留原选择,失效则选第一项
+  function refreshProviderList() {
+    var prev = els.provider.value;
+    var prefixes = providerPrefixes();
+    els.provider.textContent = "";
+    prefixes.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = p;
+      els.provider.appendChild(opt);
+    });
+    var customOpt = document.createElement("option");
+    customOpt.value = CUSTOM_VALUE;
+    customOpt.textContent = "自定义…";
+    els.provider.appendChild(customOpt);
+    // 保留旧选择(含自定义);失效则选第一项(无前缀时退化为自定义)
+    if (prev && (prev === CUSTOM_VALUE || prefixes.indexOf(prev) !== -1)) {
+      els.provider.value = prev;
+    } else {
+      els.provider.value = prefixes.length ? prefixes[0] : CUSTOM_VALUE;
+    }
+    refreshModelList();
+  }
+
+  // 重建模型下拉(选中前缀下的完整 slug),尽量保留原模型;并切换手填框可见性
   function refreshModelList() {
-    var list = candidates();
-    // 重建 datalist
-    els.datalist.textContent = "";
+    if (isCustom()) {
+      // 自定义模式:隐藏模型下拉,显示手填框
+      els.model.style.display = "none";
+      els.modelCustom.style.display = "";
+      return;
+    }
+    els.modelCustom.style.display = "none";
+    els.model.style.display = "";
+    var prev = els.model.value;
+    var list = modelsForPrefix(els.provider.value);
+    els.model.textContent = "";
     list.forEach(function (slug) {
       var opt = document.createElement("option");
       opt.value = slug;
-      els.datalist.appendChild(opt);
+      opt.textContent = slug;
+      els.model.appendChild(opt);
     });
-    var provider = TAB_PROVIDER[currentTab];
-    if (provider !== null) {
-      var cur = els.model.value.trim();
-      if (cur === "" || list.indexOf(cur) === -1) {
-        // 当前值不属于新协议候选:换为首个候选,无候选则清空留手填
-        els.model.value = list.length ? list[0] : "";
-      }
+    if (prev && list.indexOf(prev) !== -1) {
+      els.model.value = prev;
+    } else {
+      els.model.value = list.length ? list[0] : "";
     }
   }
 
@@ -446,7 +571,7 @@ footer.foot .dot { color: var(--neon); }
     var base = trimBase(els.base.value);
     var rawKey = els.key.value.trim();
     var key = rawKey === "" ? KEY_PLACEHOLDER : rawKey;
-    var model = els.model.value.trim();
+    var model = currentModel();
 
     var text;
     switch (currentTab) {
@@ -488,15 +613,24 @@ footer.foot .dot { color: var(--neon); }
     for (var i = 0; i < all.length; i++) {
       all[i].classList.toggle("active", all[i] === btn);
     }
-    refreshModelList();
+    refreshProviderList();
     render();
   });
 
   ["input", "change"].forEach(function (ev) {
     els.key.addEventListener(ev, render);
     els.base.addEventListener(ev, render);
-    els.model.addEventListener(ev, render);
+    els.modelCustom.addEventListener(ev, render);
   });
+
+  // 切供应商:重建模型下拉(或切到手填),再生成配置
+  els.provider.addEventListener("change", function () {
+    refreshModelList();
+    render();
+  });
+
+  // 切模型:仅重新生成配置
+  els.model.addEventListener("change", render);
 
   // 复制:优先 clipboard,失败回退 execCommand
   function flashCopied() {
@@ -532,7 +666,7 @@ footer.foot .dot { color: var(--neon); }
   // 下载 config.toml:仅 toml 部分(不含 export 行)
   els.download.addEventListener("click", function () {
     var base = trimBase(els.base.value);
-    var model = els.model.value.trim();
+    var model = currentModel();
     var toml = tplCodexToml(base, model);
     var blob = new Blob([toml], { type: "application/toml" });
     var url = URL.createObjectURL(blob);
@@ -546,7 +680,7 @@ footer.foot .dot { color: var(--neon); }
   });
 
   // 初始
-  refreshModelList();
+  refreshProviderList();
   render();
 })();
 </script>
