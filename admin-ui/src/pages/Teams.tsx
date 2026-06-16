@@ -13,6 +13,11 @@ export default function Teams() {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // 重命名表单:renaming 存被改团队,null 表示弹窗关闭
+  const [renaming, setRenaming] = useState<Team | null>(null);
+  const [renameName, setRenameName] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
+
   async function load() {
     setError(null);
     try {
@@ -48,6 +53,28 @@ export default function Teams() {
     }
   }
 
+  function openRename(t: Team) {
+    setRenaming(t);
+    setRenameName(t.name);
+    setError(null);
+  }
+
+  async function submitRename(e: React.FormEvent) {
+    e.preventDefault();
+    if (!renaming) return;
+    setRenameBusy(true);
+    setError(null);
+    try {
+      await api.teams.update(renaming.id, { name: renameName });
+      setRenaming(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '网络错误');
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader title="团队" action={<Button onClick={openCreate}>新建团队</Button>} />
@@ -72,11 +99,16 @@ export default function Teams() {
             {
               key: 'actions',
               title: '操作',
-              width: '120px',
+              width: '200px',
               render: (t) => (
-                <Button variant="ghost" onClick={() => nav(`/teams/${t.id}`)}>
-                  进入详情
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => nav(`/teams/${t.id}`)}>
+                    进入详情
+                  </Button>
+                  <Button variant="ghost" onClick={() => openRename(t)}>
+                    重命名
+                  </Button>
+                </div>
               ),
             },
           ]}
@@ -99,6 +131,27 @@ export default function Teams() {
             </Button>
             <Button type="submit" loading={busy}>
               创建
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={renaming !== null} title="重命名团队" onClose={() => setRenaming(null)}>
+        <form onSubmit={submitRename} className="space-y-4">
+          <Input
+            label="团队名称"
+            value={renameName}
+            onChange={(e) => setRenameName(e.target.value)}
+            required
+            autoFocus
+            placeholder="平台研发组"
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setRenaming(null)}>
+              取消
+            </Button>
+            <Button type="submit" loading={renameBusy}>
+              保存
             </Button>
           </div>
         </form>

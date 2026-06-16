@@ -27,7 +27,13 @@ export default function Users() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('user');
+  const [realName, setRealName] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // 编辑表单:editing 存被改用户,null 表示弹窗关闭
+  const [editing, setEditing] = useState<User | null>(null);
+  const [editRealName, setEditRealName] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
 
   async function load() {
     setError(null);
@@ -47,8 +53,31 @@ export default function Users() {
     setEmail('');
     setPassword('');
     setRole('user');
+    setRealName('');
     setError(null);
     setCreating(true);
+  }
+
+  function openEdit(u: User) {
+    setEditing(u);
+    setEditRealName(u.real_name);
+    setError(null);
+  }
+
+  async function submitEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setEditBusy(true);
+    setError(null);
+    try {
+      await api.users.update(editing.id, { real_name: editRealName });
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '网络错误');
+    } finally {
+      setEditBusy(false);
+    }
   }
 
   async function submitCreate(e: React.FormEvent) {
@@ -56,7 +85,7 @@ export default function Users() {
     setBusy(true);
     setError(null);
     try {
-      await api.users.create({ email, password, role });
+      await api.users.create({ email, password, role, real_name: realName });
       setCreating(false);
       await load();
     } catch (err) {
@@ -97,15 +126,28 @@ export default function Users() {
               title: '邮箱',
               render: (u) => <span className="font-mono text-ink">{u.email}</span>,
             },
+            {
+              key: 'real_name',
+              title: '真实姓名',
+              render: (u) =>
+                u.real_name ? (
+                  <span className="text-ink">{u.real_name}</span>
+                ) : (
+                  <span className="text-dim">—</span>
+                ),
+            },
             { key: 'role', title: '角色', render: (u) => <RoleBadge role={u.role} /> },
             { key: 'status', title: '状态', render: (u) => <Badge status={u.status} /> },
             { key: 'created_at', title: '创建时间', render: (u) => fmtTime(u.created_at) },
             {
               key: 'actions',
               title: '操作',
-              width: '220px',
+              width: '300px',
               render: (u) => (
                 <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => openEdit(u)}>
+                    编辑
+                  </Button>
                   {u.status === 'active' ? (
                     <Button
                       variant="ghost"
@@ -156,6 +198,12 @@ export default function Users() {
             required
             autoComplete="new-password"
           />
+          <Input
+            label="真实姓名(选填)"
+            value={realName}
+            onChange={(e) => setRealName(e.target.value)}
+            placeholder="张三"
+          />
           <Select label="角色" value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="user">成员</option>
             <option value="admin">管理员</option>
@@ -166,6 +214,26 @@ export default function Users() {
             </Button>
             <Button type="submit" loading={busy}>
               创建
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={editing !== null} title="编辑用户" onClose={() => setEditing(null)}>
+        <form onSubmit={submitEdit} className="space-y-4">
+          <Input
+            label="真实姓名"
+            value={editRealName}
+            onChange={(e) => setEditRealName(e.target.value)}
+            autoFocus
+            placeholder="张三"
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setEditing(null)}>
+              取消
+            </Button>
+            <Button type="submit" loading={editBusy}>
+              保存
             </Button>
           </div>
         </form>
