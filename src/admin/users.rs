@@ -20,6 +20,7 @@ pub fn router() -> Router<AppState> {
 struct UserRow {
     id: String,
     email: String,
+    real_name: String,
     role: String,
     status: String,
     created_at: i64,
@@ -31,7 +32,7 @@ async fn list(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // 次级键 id 兜底:created_at 为秒级时间戳,同秒创建的行单凭它排序不稳定。
     let rows: Vec<UserRow> = sqlx::query_as(
-        "SELECT id, email, role, status, created_at FROM users ORDER BY created_at, id",
+        "SELECT id, email, real_name, role, status, created_at FROM users ORDER BY created_at, id",
     )
     .fetch_all(&state.db)
     .await
@@ -45,6 +46,8 @@ struct CreateReq {
     password: String,
     #[serde(default)]
     role: Option<String>,
+    #[serde(default)]
+    real_name: Option<String>,
 }
 
 async fn create(
@@ -71,11 +74,12 @@ async fn create(
     if exists.is_some() {
         return Err(ApiError::conflict("该邮箱已注册"));
     }
+    let real_name = req.real_name.unwrap_or_default().trim().to_string();
     let id = uuid::Uuid::new_v4().to_string();
     let hash = crate::crypto::hash_password(&req.password).map_err(ApiError::internal)?;
     let created_at = now_epoch();
-    sqlx::query("INSERT INTO users (id, email, password_hash, role, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)")
-        .bind(&id).bind(&email).bind(&hash).bind(&role).bind(created_at)
+    sqlx::query("INSERT INTO users (id, email, password_hash, real_name, role, status, created_at) VALUES (?, ?, ?, ?, ?, 'active', ?)")
+        .bind(&id).bind(&email).bind(&hash).bind(&real_name).bind(&role).bind(created_at)
         .execute(&state.db)
         .await
         .map_err(|e| ApiError::from_db_unique(e, "该邮箱已注册"))?;
@@ -94,6 +98,7 @@ async fn create(
         Json(UserRow {
             id,
             email,
+            real_name,
             role,
             status: "active".into(),
             created_at,
@@ -105,6 +110,7 @@ async fn create(
 struct UpdateReq {
     status: Option<String>,
     role: Option<String>,
+    real_name: Option<String>,
 }
 
 async fn update(
@@ -113,7 +119,7 @@ async fn update(
     Path(id): Path<String>,
     WithRejection(Json(req), _): WithRejection<Json<UpdateReq>, ApiError>,
 ) -> Result<Json<UserRow>, ApiError> {
-    if req.status.is_none() && req.role.is_none() {
+    if req.status.is_none() && req.role.is_none() && req.real_name.is_none() {
         return Err(ApiError::bad_request("没有需要更新的字段"));
     }
     if let Some(s) = &req.status {
@@ -132,11 +138,13 @@ async fn update(
             return Err(ApiError::forbidden("不能降级自己的角色"));
         }
     }
+    // real_name 用 COALESCE:传 Some("") 可清空(空串非 NULL),传 None 不动——语义正确。
     let res = sqlx::query(
-        "UPDATE users SET status = COALESCE(?, status), role = COALESCE(?, role) WHERE id = ?",
+        "UPDATE users SET status = COALESCE(?, status), role = COALESCE(?, role), real_name = COALESCE(?, real_name) WHERE id = ?",
     )
     .bind(&req.status)
     .bind(&req.role)
+    .bind(&req.real_name)
     .bind(&id)
     .execute(&state.db)
     .await
@@ -151,17 +159,18 @@ async fn update(
         Some(&user.id),
         "user.update",
         Some(&id),
-        serde_json::json!({"status": req.status, "role": req.role}),
+        serde_json::json!({"status": req.status, "role": req.role, "real_name": req.real_name}),
     )
     .await;
     // 不用 RETURNING:回读一次成本可忽略,保持 sqlx 运行时 API 风格统一;
     // SQLite 单写者下无并发可见性问题。
-    let row: UserRow =
-        sqlx::query_as("SELECT id, email, role, status, created_at FROM users WHERE id = ?")
-            .bind(&id)
-            .fetch_one(&state.db)
-            .await
-            .map_err(ApiError::internal)?;
+    let row: UserRow = sqlx::query_as(
+        "SELECT id, email, real_name, role, status, created_at FROM users WHERE id = ?",
+    )
+    .bind(&id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(ApiError::internal)?;
     Ok(Json(row))
 }
 
@@ -318,6 +327,98 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn create_with_real_name_echoes_and_lists() {
+        let (state, cookie) = admin_session().await;
+        // create 带 real_name → 回显
+        let resp = app(state.clone())
+            .oneshot(authed_request(
+                "POST",
+                "/admin/api/users",
+                &cookie,
+                Some(json!({"email": "zhang@x.com", "password": "memberpw1", "real_name": "  张三  "})),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        assert_eq!(
+            body_json(resp).await["real_name"],
+            "张三",
+            "应回显 trim 后真实姓名"
+        );
+
+        // 不传 real_name → 默认空串
+        let resp = app(state.clone())
+            .oneshot(authed_request(
+                "POST",
+                "/admin/api/users",
+                &cookie,
+                Some(json!({"email": "noname@x.com", "password": "memberpw1"})),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        assert_eq!(body_json(resp).await["real_name"], "", "缺省应为空串");
+
+        // list 含 real_name
+        let resp = app(state.clone())
+            .oneshot(authed_request("GET", "/admin/api/users", &cookie, None))
+            .await
+            .unwrap();
+        let users = body_json(resp).await["users"].as_array().unwrap().clone();
+        let zhang = users
+            .iter()
+            .find(|u| u["email"] == "zhang@x.com")
+            .expect("应能在列表中找到 zhang");
+        assert_eq!(zhang["real_name"], "张三");
+    }
+
+    #[tokio::test]
+    async fn update_real_name_and_clear() {
+        let (state, cookie) = admin_session().await;
+        let uid =
+            crate::test_util::insert_user(&state.db, "m@x.com", "memberpw1", "user", "active")
+                .await;
+
+        // 只传 real_name 不再触发「没有需要更新的字段」守护,且成功回显
+        let resp = app(state.clone())
+            .oneshot(authed_request(
+                "PATCH",
+                &format!("/admin/api/users/{uid}"),
+                &cookie,
+                Some(json!({"real_name": "李四"})),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "仅传 real_name 应放行");
+        assert_eq!(body_json(resp).await["real_name"], "李四");
+
+        // 传 "" 清空(空串非 NULL,语义为清空)
+        let resp = app(state.clone())
+            .oneshot(authed_request(
+                "PATCH",
+                &format!("/admin/api/users/{uid}"),
+                &cookie,
+                Some(json!({"real_name": ""})),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(body_json(resp).await["real_name"], "", "传空串应清空");
+
+        // 完全空 patch 仍 400
+        let resp = app(state.clone())
+            .oneshot(authed_request(
+                "PATCH",
+                &format!("/admin/api/users/{uid}"),
+                &cookie,
+                Some(json!({})),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "空 patch 仍应 400");
     }
 
     /// 钉死 from_db_unique 兜底:绕过 SELECT 预检直接对 db 撞 UNIQUE 约束,

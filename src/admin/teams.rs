@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/teams", get(list).post(create))
-        .route("/teams/:id", get(detail))
+        .route("/teams/:id", get(detail).patch(update))
         .route("/teams/:id/members", axum::routing::post(add_member))
         .route(
             "/teams/:id/members/:user_id",
@@ -136,6 +136,51 @@ async fn detail(
         "created_at": created_at,
         "members": members,
     })))
+}
+
+#[derive(Deserialize)]
+struct UpdateReq {
+    name: String,
+}
+
+async fn update(
+    user: AdminUser,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    WithRejection(Json(req), _): WithRejection<Json<UpdateReq>, ApiError>,
+) -> Result<Json<TeamRow>, ApiError> {
+    let name = req.name.trim().to_string();
+    if name.is_empty() {
+        return Err(ApiError::bad_request("团队名称不能为空"));
+    }
+    let res = sqlx::query("UPDATE teams SET name = ? WHERE id = ?")
+        .bind(&name)
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(ApiError::internal)?;
+    if res.rows_affected() == 0 {
+        return Err(ApiError::not_found("团队不存在"));
+    }
+    crate::audit::record(
+        &state.db,
+        Some(&user.id),
+        "team.update",
+        Some(&id),
+        serde_json::json!({"name": name}),
+    )
+    .await;
+    // 回读带 member_count,返回形状与 create 一致(单写者下无并发可见性问题)。
+    let row: TeamRow = sqlx::query_as(
+        "SELECT t.id, t.name, t.created_at, COUNT(m.user_id) AS member_count \
+         FROM teams t LEFT JOIN team_members m ON m.team_id = t.id \
+         WHERE t.id = ? GROUP BY t.id",
+    )
+    .bind(&id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(ApiError::internal)?;
+    Ok(Json(row))
 }
 
 #[derive(Deserialize)]
@@ -653,6 +698,86 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert!(body_json(resp).await["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("团队不存在"));
+    }
+
+    #[tokio::test]
+    async fn rename_team() {
+        let (state, cookie) = admin_session().await;
+        let team_id = create_team(&state, &cookie, "旧名").await;
+
+        // 改名成功:回显新名,member_count 形状与 create 一致
+        let resp = app(state.clone())
+            .oneshot(authed_request(
+                "PATCH",
+                &format!("/admin/api/teams/{team_id}"),
+                &cookie,
+                Some(json!({"name": "  新名  "})), // trim
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["name"], "新名", "应回显 trim 后的新名");
+        assert_eq!(body["id"], team_id);
+        assert_eq!(body["member_count"], 1, "改名应保留 member_count");
+
+        // 列表已是新名
+        let resp = app(state.clone())
+            .oneshot(authed_request("GET", "/admin/api/teams", &cookie, None))
+            .await
+            .unwrap();
+        let teams = body_json(resp).await["teams"].as_array().unwrap().clone();
+        assert_eq!(teams[0]["name"], "新名");
+
+        // 审计落 team.update 一条
+        let (n,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM audit_events WHERE action='team.update'")
+                .fetch_one(&state.db)
+                .await
+                .unwrap();
+        assert_eq!(n, 1, "应落 team.update 审计一条");
+    }
+
+    #[tokio::test]
+    async fn rename_team_empty_name_400() {
+        let (state, cookie) = admin_session().await;
+        let team_id = create_team(&state, &cookie, "甲队").await;
+        for body in [json!({"name": ""}), json!({"name": "   "})] {
+            let resp = app(state.clone())
+                .oneshot(authed_request(
+                    "PATCH",
+                    &format!("/admin/api/teams/{team_id}"),
+                    &cookie,
+                    Some(body),
+                ))
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "空名/纯空格应 400");
+            let msg = body_json(resp).await["error"]["message"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            assert!(msg.contains("团队名称"), "文案应含「团队名称」: {msg}");
+        }
+    }
+
+    #[tokio::test]
+    async fn rename_team_not_found_404() {
+        let (state, cookie) = admin_session().await;
+        let resp = app(state.clone())
+            .oneshot(authed_request(
+                "PATCH",
+                "/admin/api/teams/nope",
+                &cookie,
+                Some(json!({"name": "新名"})),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "不存在 id 应 404");
         assert!(body_json(resp).await["error"]["message"]
             .as_str()
             .unwrap()

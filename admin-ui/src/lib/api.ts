@@ -6,6 +6,7 @@ export interface Me {
 export interface User {
   id: string;
   email: string;
+  real_name: string;
   role: string;
   status: string;
   created_at: number;
@@ -196,15 +197,16 @@ export const api = {
 
   users: {
     list: () => request<{ users: User[] }>('/admin/api/users'),
-    create: (body: { email: string; password: string; role?: string }) =>
+    create: (body: { email: string; password: string; role?: string; real_name?: string }) =>
       post<User>('/admin/api/users', body),
-    update: (id: string, body: { status?: string; role?: string }) =>
+    update: (id: string, body: { status?: string; role?: string; real_name?: string }) =>
       patch<User>(`/admin/api/users/${id}`, body),
   },
 
   teams: {
     list: () => request<{ teams: Team[] }>('/admin/api/teams'),
     create: (body: { name: string }) => post<Team>('/admin/api/teams', body),
+    update: (id: string, body: { name: string }) => patch<Team>(`/admin/api/teams/${id}`, body),
     detail: (id: string) => request<TeamDetail>(`/admin/api/teams/${id}`),
     addMember: (id: string, body: { email: string; role: string }) =>
       post<void>(`/admin/api/teams/${id}/members`, body),
